@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ottonate.metrics import IssueMetrics
 from ottonate.models import ReviewComment, Ticket
 
 
@@ -135,4 +136,58 @@ def review_responder_prompt(
 {comments_text}
 
 Address each comment. Reply inline using gh api.
+"""
+
+
+def retro_prompt(
+    ticket: Ticket,
+    plan: str,
+    metrics: IssueMetrics,
+    comments: list[dict],
+    *,
+    rules_context: str = "",
+) -> str:
+    rules = _rules_section(rules_context)
+
+    stage_lines = []
+    for s in metrics.stages:
+        line = f"- **{s['stage']}** (agent: {s.get('agent', 'n/a')})"
+        if s.get("retry_number", 0) > 0:
+            line += f" -- retry #{s['retry_number']}"
+        if s.get("was_stuck"):
+            line += f" -- STUCK: {s.get('stuck_reason', 'unknown')}"
+        if s.get("is_error"):
+            line += " -- ERROR"
+        stage_lines.append(line)
+
+    stage_detail = "\n".join(stage_lines) if stage_lines else "No stage data recorded."
+
+    comment_lines = (
+        "\n".join(f"- @{c.get('author', 'unknown')}: {c.get('body', '')[:200]}" for c in comments)
+        if comments
+        else "No review comments."
+    )
+
+    return f"""## Retrospective: {ticket.issue_ref}
+
+### Issue Summary
+{ticket.summary}
+
+### Development Plan
+{plan or "No plan recorded."}
+
+### Pipeline Metrics
+- Total stages: {metrics.total_stages}
+- Total retries: {metrics.total_retries}
+- Total cost: ${metrics.total_cost_usd:.2f}
+- Was stuck: {metrics.was_stuck}
+- Stuck reasons: {", ".join(metrics.stuck_reasons) or "none"}
+
+### Stage Detail
+{stage_detail}
+
+### Review Comments Received
+{comment_lines}
+{rules}
+Analyze what went wrong and propose improvements to the engineering repo.
 """

@@ -30,6 +30,7 @@ class Label(StrEnum):
     REVIEW = "agentReview"
     ADDRESSING_REVIEW = "agentAddressingReview"
     MERGE_READY = "agentMergeReady"
+    RETRO = "agentRetro"
     STUCK = "agentStuck"
 
 
@@ -54,6 +55,7 @@ IN_PROGRESS_LABELS = {
     Label.IMPLEMENTING,
     Label.CI_FIX,
     Label.ADDRESSING_REVIEW,
+    Label.RETRO,
 }
 
 
