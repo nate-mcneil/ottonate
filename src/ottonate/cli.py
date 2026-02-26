@@ -81,14 +81,6 @@ def sync_agents() -> None:
         click.echo("All agent definitions are up to date.")
 
 
-@main.command("mcp")
-def mcp() -> None:
-    """Start the MCP memory server over stdio."""
-    from ottonate.mcp_server import run_server
-
-    asyncio.run(run_server())
-
-
 @main.command("rules-check")
 @click.argument("repo_ref")
 def rules_check(repo_ref: str) -> None:
@@ -122,59 +114,3 @@ def rules_check(repo_ref: str) -> None:
                 click.echo("... (truncated)")
 
     asyncio.run(_check())
-
-
-@main.command("setup-memory")
-@click.option("--region", default="us-west-2", help="AWS region for AgentCore")
-def setup_memory(region: str) -> None:
-    """Provision Bedrock AgentCore memory stores."""
-    from bedrock_agentcore.memory import MemoryClient
-
-    client = MemoryClient(region_name=region)
-    stores = [
-        (
-            "ottonate_team_context",
-            [
-                {
-                    "summaryMemoryStrategy": {
-                        "name": "TeamKnowledge",
-                        "namespaces": ["/ottonate/team/{sessionId}/"],
-                    }
-                }
-            ],
-        ),
-        (
-            "ottonate_repo_context",
-            [
-                {
-                    "summaryMemoryStrategy": {
-                        "name": "RepoKnowledge",
-                        "namespaces": ["/ottonate/repos/{actorId}/{sessionId}/"],
-                    }
-                }
-            ],
-        ),
-        (
-            "ottonate_issue_context",
-            [
-                {
-                    "summaryMemoryStrategy": {
-                        "name": "IssueKnowledge",
-                        "namespaces": ["/ottonate/issues/{actorId}/{sessionId}/"],
-                    }
-                }
-            ],
-        ),
-    ]
-    env_keys = [
-        "OTTONATE_AGENTCORE_BROAD_MEMORY_ID",
-        "OTTONATE_AGENTCORE_REPO_MEMORY_ID",
-        "OTTONATE_AGENTCORE_ISSUE_MEMORY_ID",
-    ]
-    click.echo(f"Provisioning 3 memory stores in {region}...")
-    for (name, strategies), env_key in zip(stores, env_keys):
-        click.echo(f"  Creating {name}...")
-        result = client.create_memory_and_wait(name=name, strategies=strategies)
-        memory_id = result.get("id", result.get("memoryId", ""))
-        click.echo(f"  {env_key}={memory_id}")
-    click.echo("\nAdd the above to your .env file.")
