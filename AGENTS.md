@@ -13,6 +13,7 @@ pytest tests/ -v
 ottonate run                         # Start the scheduler daemon
 ottonate process owner/repo#42       # Process a single issue
 ottonate sync-agents                 # Sync agent definitions to ~/.claude/agents/
+ottonate init-engineering            # Bootstrap the engineering repo
 ottonate rules-check owner/repo      # Debug merged rules for a repo
 ```
 
@@ -48,8 +49,9 @@ ottonate/
     otto-reviewer.md
     otto-review-responder.md
     otto-spec-agent.md
+    otto-retro.md
   src/ottonate/
-    cli.py                   # Click CLI: run, process, sync-agents, rules-check
+    cli.py                   # Click CLI: run, process, sync-agents, init-engineering, rules-check
     config.py                # Pydantic settings (env prefix: OTTONATE_)
     models.py                # Label enum, Ticket, StageResult, CIStatus, ReviewStatus
     pipeline.py              # Stage handlers and agent invocation
@@ -59,6 +61,8 @@ ottonate/
     agents.py                # Agent definition sync (repo -> ~/.claude/agents/)
     enrichment.py            # Story enrichment (AC, tech notes, test expectations)
     traceability.py          # Artifact traceability graph (spec -> story -> PR -> tests)
+    metrics.py               # Stage metrics persistence (SQLite)
+    init_engineering.py      # Engineering repo bootstrap (scaffold + org scan)
     integrations/
       github.py              # GitHub via gh CLI (issue CRUD, PRs, labels, projects)
   tests/
@@ -69,6 +73,8 @@ ottonate/
     test_enrichment.py
     test_rules.py
     test_traceability.py
+    test_metrics.py
+    test_init_engineering.py
     integrations/
       test_github.py
   PIPELINE.md                # Full pipeline flow documentation
@@ -92,7 +98,8 @@ labels. The entry label is NOT in the enum -- it is resolved at runtime from
   `agentBacklogReview` -> stories created in target repos
 - **Dev path** (target repo issues): `otto` -> `agentPlanning` ->
   `agentPlanReview` -> `agentPlan` -> `agentImplementing` -> `agentPR` ->
-  `agentSelfReview` -> `agentReview` -> `agentMergeReady`
+  `agentSelfReview` -> `agentReview` -> `agentMergeReady` ->
+  (if issues detected) `agentRetro`
 
 Any stage can move to `agentStuck` if the pipeline cannot proceed.
 

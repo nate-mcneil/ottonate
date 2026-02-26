@@ -169,7 +169,18 @@ CI-green pull request.
 |---|---|
 | **Label** | `agentMergeReady` |
 | **Agent** | None (human action) |
-| **What happens** | An @mention notification is posted on the issue indicating the PR is approved and CI is green. The label remains until a human merges the PR. |
+| **What happens** | The pipeline checks if the PR has been merged. If not, an @mention notification is posted (once). Once the PR is merged, the pipeline queries issue metrics. If the issue had retries or stuck episodes, it transitions to the retro stage. If clean, labels are removed and the issue is complete. |
+| **Next** | `agentRetro` if issues were detected; issue complete otherwise |
+
+### 12. Retrospective
+
+| | |
+|---|---|
+| **Trigger** | PR merged and issue had retries > 0 or was stuck |
+| **Label** | `agentRetro` |
+| **Agent** | `otto-retro` |
+| **What happens** | The retro agent analyzes the issue's pipeline metrics, the development plan, and any review comments received. It proposes targeted improvements to the engineering repo's rules and architecture docs by opening a PR. If it identifies improvements to ottonate's own agents or prompts, it files an issue in the ottonate repo. |
+| **Next** | Labels removed, issue complete |
 
 ---
 
@@ -193,6 +204,7 @@ CI-green pull request.
 | `agentReview` | PR is waiting for human code review | Human | Yes |
 | `agentAddressingReview` | Review responder is addressing comments | Agent | Yes |
 | `agentMergeReady` | PR approved + CI green, waiting for merge | Human | Yes |
+| `agentRetro` | Retro agent is analyzing pipeline performance | Agent | Yes |
 | `agentStuck` | Pipeline cannot proceed, needs human help | Human | Yes |
 
 ---
@@ -270,8 +282,15 @@ CI-green pull request.
         v  (approved + CI green)
    agentMergeReady
         |
-        v
-  [Human merges PR]
+        +-- (not merged) --> (wait, notify once)
+        |
+        v  (merged)
+        +-- (clean) ------> [Issue Complete]
+        |
+        +-- (had issues) --> agentRetro --> [Issue Complete]
+                                |
+                                +--> PR to engineering repo
+                                +--> Issue in ottonate repo (optional)
 ```
 
 ---
@@ -300,6 +319,7 @@ When a retry limit is exceeded, the issue moves to `agentStuck`.
 | `otto-ci-fixer` | Reads CI failure logs and pushes fixes |
 | `otto-reviewer` | Self-reviews PRs against the original plan |
 | `otto-review-responder` | Addresses human review comments inline |
+| `otto-retro` | Runs retrospectives and proposes engineering repo improvements |
 
 ---
 
