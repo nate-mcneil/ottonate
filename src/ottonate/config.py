@@ -48,12 +48,6 @@ class OttonateConfig(BaseSettings):
     workspace_dir: Path = Path("~/.ottonate/workspaces")
     db_path: Path = Path("~/.ottonate/ottonate.db")
 
-    # AgentCore Memory
-    agentcore_region: str = "us-west-2"
-    agentcore_broad_memory_id: str = ""
-    agentcore_repo_memory_id: str = ""
-    agentcore_issue_memory_id: str = ""
-
     def resolved_workspace_dir(self) -> Path:
         return self.workspace_dir.expanduser()
 

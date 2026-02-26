@@ -9,8 +9,6 @@ dependencies = [
     "pydantic-settings>=2.0",
     "structlog>=24.0",
     "pyyaml>=6.0",
-    "bedrock-agentcore>=0.1.0",
-    "mcp>=1.0.0",
 ]
 
 [project.scripts]

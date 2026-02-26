@@ -13,7 +13,6 @@ pytest tests/ -v
 ottonate run                         # Start the scheduler daemon
 ottonate process owner/repo#42       # Process a single issue
 ottonate sync-agents                 # Sync agent definitions to ~/.claude/agents/
-ottonate setup-memory                # Provision Bedrock AgentCore memory stores
 ottonate rules-check owner/repo      # Debug merged rules for a repo
 ```
 
@@ -32,7 +31,7 @@ Ottonate is a single async Python process with three layers:
    flow diagram.
 
 3. **Integrations** (`integrations/`) -- thin async clients for GitHub
-   (via `gh` CLI) and Bedrock AgentCore memory.
+   (via `gh` CLI).
 
 4. **Rules** (`rules.py`) -- three-layer rules system that loads configuration
    and context from built-in defaults, the engineering repo, and target repos.
@@ -50,7 +49,7 @@ ottonate/
     otto-review-responder.md
     otto-spec-agent.md
   src/ottonate/
-    cli.py                   # Click CLI: run, process, sync-agents, setup-memory, rules-check
+    cli.py                   # Click CLI: run, process, sync-agents, rules-check
     config.py                # Pydantic settings (env prefix: OTTONATE_)
     models.py                # Label enum, Ticket, StageResult, CIStatus, ReviewStatus
     pipeline.py              # Stage handlers and agent invocation
@@ -62,7 +61,6 @@ ottonate/
     traceability.py          # Artifact traceability graph (spec -> story -> PR -> tests)
     integrations/
       github.py              # GitHub via gh CLI (issue CRUD, PRs, labels, projects)
-      memory.py              # Bedrock AgentCore memory (semantic search/store)
   tests/
     conftest.py              # Shared fixtures (config, mocks, sample_ticket)
     test_models.py
@@ -142,7 +140,6 @@ Pydantic settings from `.env`. Key variables:
 - `OTTONATE_GITHUB_AGENT_LABEL` -- the entry label (default `otto`)
 - `OTTONATE_GITHUB_USERNAME` -- bot account username for filtering
 - `OTTONATE_GITHUB_NOTIFY_TEAM` -- team/user to @mention on events
-- `OTTONATE_AGENTCORE_*` -- Bedrock AgentCore memory store IDs
 
 ## Conventions
 
