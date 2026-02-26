@@ -13,7 +13,7 @@ from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage
 
 from ottonate.config import OttonateConfig
 from ottonate.enrichment import EnrichedStory, enrich_story_prompt, parse_enriched_story
-from ottonate.integrations.github import GitHubClient
+from ottonate.github import GitHubClient
 from ottonate.metrics import MetricsStore
 from ottonate.models import (
     CIStatus,

@@ -17,7 +17,7 @@ import yaml
 
 if TYPE_CHECKING:
     from ottonate.config import OttonateConfig
-    from ottonate.integrations.github import GitHubClient
+    from ottonate.github import GitHubClient
 
 log = structlog.get_logger()
 

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from ottonate.config import OttonateConfig
-from ottonate.integrations.github import GitHubClient
+from ottonate.github import GitHubClient
 from ottonate.metrics import MetricsStore
 from ottonate.models import Ticket
 from ottonate.rules import ResolvedRules

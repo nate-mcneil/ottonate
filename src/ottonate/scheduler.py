@@ -9,7 +9,7 @@ from pathlib import Path
 import structlog
 
 from ottonate.config import OttonateConfig
-from ottonate.integrations.github import GitHubClient
+from ottonate.github import GitHubClient
 from ottonate.metrics import MetricsStore
 from ottonate.models import ACTIONABLE_LABELS, Ticket
 from ottonate.pipeline import Pipeline

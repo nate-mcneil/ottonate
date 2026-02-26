@@ -9,7 +9,7 @@ from pathlib import Path
 import structlog
 
 from ottonate.config import OttonateConfig
-from ottonate.integrations.github import GitHubClient
+from ottonate.github import GitHubClient
 from ottonate.pipeline import run_agent
 
 log = structlog.get_logger()

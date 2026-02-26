@@ -85,8 +85,8 @@ def sync_agents() -> None:
 def init_engineering_cmd() -> None:
     """Bootstrap the engineering repo with scaffolding and auto-discovered architecture docs."""
     from ottonate.agents import sync_agent_definitions
+    from ottonate.github import GitHubClient
     from ottonate.init_engineering import init_engineering
-    from ottonate.integrations.github import GitHubClient
 
     sync_agent_definitions()
     config = _get_config()
@@ -102,7 +102,7 @@ def rules_check(repo_ref: str) -> None:
 
     REPO_REF should be in the format owner/repo (e.g. appfire/flow-api).
     """
-    from ottonate.integrations.github import GitHubClient
+    from ottonate.github import GitHubClient
     from ottonate.rules import load_rules
 
     parts = repo_ref.split("/", 1)

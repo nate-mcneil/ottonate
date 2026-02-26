@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ottonate.integrations.github import GitHubClient
+from ottonate.github import GitHubClient
 from ottonate.models import CIStatus, ReviewStatus
 
 

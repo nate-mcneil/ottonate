@@ -63,8 +63,7 @@ ottonate/
     traceability.py          # Artifact traceability graph (spec -> story -> PR -> tests)
     metrics.py               # Stage metrics persistence (SQLite)
     init_engineering.py      # Engineering repo bootstrap (scaffold + org scan)
-    integrations/
-      github.py              # GitHub via gh CLI (issue CRUD, PRs, labels, projects)
+    github.py                # GitHub via gh CLI (issue CRUD, PRs, labels, projects)
   tests/
     conftest.py              # Shared fixtures (config, mocks, sample_ticket)
     test_models.py
@@ -75,8 +74,7 @@ ottonate/
     test_traceability.py
     test_metrics.py
     test_init_engineering.py
-    integrations/
-      test_github.py
+    test_github.py
   PIPELINE.md                # Full pipeline flow documentation
   pyproject.toml
 ```
