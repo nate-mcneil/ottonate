@@ -16,8 +16,8 @@ from ottonate.pipeline import (
 
 
 @pytest.fixture
-def pipeline(config, mock_github, mock_memory):
-    return Pipeline(config, mock_github, memory=mock_memory)
+def pipeline(config, mock_github):
+    return Pipeline(config, mock_github)
 
 
 def _agent_result(text: str = "", is_error: bool = False) -> StageResult:

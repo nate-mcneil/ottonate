@@ -10,7 +10,6 @@ import structlog
 
 from ottonate.config import OttonateConfig
 from ottonate.integrations.github import GitHubClient
-from ottonate.integrations.memory import OttonateMemory
 from ottonate.models import ACTIONABLE_LABELS, Ticket
 from ottonate.pipeline import Pipeline
 from ottonate.rules import load_rules
@@ -22,17 +21,10 @@ class Scheduler:
     def __init__(self, config: OttonateConfig):
         self.config = config
         self.github = GitHubClient()
-        self.memory = OttonateMemory(
-            region=config.agentcore_region,
-            broad_memory_id=config.agentcore_broad_memory_id,
-            repo_memory_id=config.agentcore_repo_memory_id,
-            jira_memory_id=config.agentcore_issue_memory_id,
-        )
         self._rate_limited_until: float = 0.0
         self.pipeline = Pipeline(
             config,
             self.github,
-            memory=self.memory,
             on_rate_limit=self._signal_rate_limit,
         )
         self._semaphore = asyncio.Semaphore(config.max_concurrent_tickets)

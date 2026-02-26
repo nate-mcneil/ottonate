@@ -11,11 +11,8 @@ def _rules_section(rules_context: str) -> str:
     return f"\n### Project Context\n{rules_context}\n"
 
 
-def spec_prompt(
-    ticket: Ticket, description: str, *, rules_context: str = "", memory_context: str = ""
-) -> str:
+def spec_prompt(ticket: Ticket, description: str, *, rules_context: str = "") -> str:
     rules = _rules_section(rules_context)
-    mem = f"\n{memory_context}\n" if memory_context else ""
     return f"""## Initiative: {ticket.issue_ref}
 
 ### Description
@@ -23,7 +20,7 @@ def spec_prompt(
 
 ### Repository
 {ticket.full_repo}
-{rules}{mem}
+{rules}
 Generate a comprehensive product specification for this initiative. Write the spec to SPEC.md.
 """
 
@@ -49,11 +46,8 @@ End with [BACKLOG_COMPLETE] when done.
 """
 
 
-def planner_prompt(
-    ticket: Ticket, description: str, *, rules_context: str = "", memory_context: str = ""
-) -> str:
+def planner_prompt(ticket: Ticket, description: str, *, rules_context: str = "") -> str:
     rules = _rules_section(rules_context)
-    mem = f"\n{memory_context}\n" if memory_context else ""
     return f"""## Issue: {ticket.issue_ref}
 
 ### Description
@@ -61,7 +55,7 @@ def planner_prompt(
 
 ### Repository
 {ticket.full_repo}
-{rules}{mem}
+{rules}
 Analyze the codebase and produce a development plan for this issue.
 """
 
@@ -85,10 +79,8 @@ def implementer_prompt(
     branch_name: str,
     *,
     rules_context: str = "",
-    memory_context: str = "",
 ) -> str:
     rules = _rules_section(rules_context)
-    mem = f"\n{memory_context}\n" if memory_context else ""
     return f"""## Issue: {ticket.issue_ref}
 
 ### Branch
@@ -96,7 +88,7 @@ Create branch: `{branch_name}` from the default branch.
 
 ### Development Plan
 {plan}
-{rules}{mem}
+{rules}
 Implement this plan following TDD. Create the PR when done.
 """
 

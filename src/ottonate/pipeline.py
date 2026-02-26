@@ -14,7 +14,6 @@ from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage
 from ottonate.config import OttonateConfig
 from ottonate.enrichment import EnrichedStory, enrich_story_prompt, parse_enriched_story
 from ottonate.integrations.github import GitHubClient
-from ottonate.integrations.memory import OttonateMemory, format_memory_context
 from ottonate.models import (
     CIStatus,
     Label,
@@ -197,12 +196,10 @@ class Pipeline:
         self,
         config: OttonateConfig,
         github: GitHubClient,
-        memory: OttonateMemory | None = None,
         on_rate_limit: Callable[[], None] | None = None,
     ):
         self.config = config
         self.github = github
-        self.memory = memory or OttonateMemory()
         self.agent_label = config.github_agent_label
         self.trace = TraceabilityGraph()
         self._on_rate_limit = on_rate_limit
@@ -278,11 +275,7 @@ class Pipeline:
         description = await self.github.get_issue_body(
             ticket.owner, ticket.repo, ticket.issue_number
         )
-        mem_entries = await self.memory.search_ticket_context(ticket.issue_ref)
-        mem_text = format_memory_context(mem_entries)
-        prompt = spec_prompt(
-            ticket, description, rules_context=rules.agent_context, memory_context=mem_text
-        )
+        prompt = spec_prompt(ticket, description, rules_context=rules.agent_context)
         result = await self._run("otto-spec-agent", prompt, ticket.work_dir)
 
         log.info("spec_agent_done", issue=ticket.issue_ref, turns=result.turns_used)
@@ -521,13 +514,7 @@ class Pipeline:
         description = await self.github.get_issue_body(
             ticket.owner, ticket.repo, ticket.issue_number
         )
-        repo_name = ticket.repo
-        ticket_ctx = await self.memory.search_ticket_context(ticket.issue_ref)
-        repo_ctx = await self.memory.search_repo_context(repo_name) if repo_name else []
-        mem_text = format_memory_context(ticket_ctx + repo_ctx)
-        prompt = planner_prompt(
-            ticket, description, rules_context=rules.agent_context, memory_context=mem_text
-        )
+        prompt = planner_prompt(ticket, description, rules_context=rules.agent_context)
         result = await self._run("otto-planner", prompt, ticket.work_dir)
 
         log.info(
@@ -560,7 +547,6 @@ class Pipeline:
             "## Development Plan\n\nPlan committed to feature branch as PLAN.md",
         )
         ticket.plan = plan_text
-        await self.memory.store_plan(ticket.issue_ref, plan_text[:1000])
         await self.github.swap_label(
             ticket.owner, ticket.repo, ticket.issue_number, Label.PLANNING, Label.PLAN_REVIEW
         )
@@ -638,13 +624,8 @@ class Pipeline:
         )
 
         plan = ticket.plan or await self._get_plan(ticket)
-        repo_name = ticket.repo
-        repo_ctx = await self.memory.search_repo_context(repo_name) if repo_name else []
-        mem_text = format_memory_context(repo_ctx, header="Repo Patterns & Known Issues")
         branch_name = _slugify_branch(ticket.issue_number, plan, rules.branch_pattern)
-        prompt = implementer_prompt(
-            ticket, plan, branch_name, rules_context=rules.agent_context, memory_context=mem_text
-        )
+        prompt = implementer_prompt(ticket, plan, branch_name, rules_context=rules.agent_context)
         result = await self._run("otto-implementer", prompt, ticket.work_dir)
 
         log.info(

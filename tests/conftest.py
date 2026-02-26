@@ -6,7 +6,6 @@ import pytest
 
 from ottonate.config import OttonateConfig
 from ottonate.integrations.github import GitHubClient
-from ottonate.integrations.memory import OttonateMemory
 from ottonate.models import Ticket
 from ottonate.rules import ResolvedRules
 
@@ -36,16 +35,6 @@ def mock_github() -> AsyncMock:
     gh.get_file_content = AsyncMock(return_value=None)
     gh.get_pr_state = AsyncMock(return_value="OPEN")
     return gh
-
-
-@pytest.fixture
-def mock_memory() -> AsyncMock:
-    mem = AsyncMock(spec=OttonateMemory)
-    mem.search_ticket_context = AsyncMock(return_value=[])
-    mem.search_repo_context = AsyncMock(return_value=[])
-    mem.store_plan = AsyncMock()
-    mem.store_learnings = AsyncMock()
-    return mem
 
 
 @pytest.fixture
