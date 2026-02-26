@@ -81,6 +81,20 @@ def sync_agents() -> None:
         click.echo("All agent definitions are up to date.")
 
 
+@main.command("init-engineering")
+def init_engineering_cmd() -> None:
+    """Bootstrap the engineering repo with scaffolding and auto-discovered architecture docs."""
+    from ottonate.agents import sync_agent_definitions
+    from ottonate.init_engineering import init_engineering
+    from ottonate.integrations.github import GitHubClient
+
+    sync_agent_definitions()
+    config = _get_config()
+    github = GitHubClient()
+    pr_url = asyncio.run(init_engineering(config, github))
+    click.echo(f"PR created: {pr_url}")
+
+
 @main.command("rules-check")
 @click.argument("repo_ref")
 def rules_check(repo_ref: str) -> None:
