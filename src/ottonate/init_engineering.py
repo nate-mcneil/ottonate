@@ -122,7 +122,17 @@ async def init_engineering(config: OttonateConfig, github: GitHubClient) -> str:
         branch = "otto/init-engineering"
         await _git(work_dir, "checkout", "-b", branch)
         await _git(work_dir, "add", "-A")
-        await _git(work_dir, "commit", "-m", "chore: scaffold engineering repo")
+
+        has_scaffold_changes = True
+        try:
+            await _git(work_dir, "diff-index", "--quiet", "HEAD", "--")
+            has_scaffold_changes = False
+        except RuntimeError:
+            pass
+
+        if has_scaffold_changes:
+            await _git(work_dir, "commit", "-m", "chore: scaffold engineering repo")
+
         await _git(work_dir, "push", "-u", "origin", branch)
 
         prompt = _SCAN_PROMPT.format(org=org)
