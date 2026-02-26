@@ -42,7 +42,13 @@ class TestSearchIssues:
 class TestGetIssue:
     @pytest.mark.asyncio
     async def test_returns_issue(self, github):
-        issue = {"number": 42, "title": "Test", "body": "Description", "labels": [], "state": "OPEN"}
+        issue = {
+            "number": 42,
+            "title": "Test",
+            "body": "Description",
+            "labels": [],
+            "state": "OPEN",
+        }
         with patch("asyncio.create_subprocess_exec", return_value=_gh_result(json.dumps(issue))):
             result = await github.get_issue("org", "repo", 42)
         assert result["title"] == "Test"
@@ -64,6 +70,7 @@ class TestSwapLabel:
     async def test_calls_gh(self, github):
         with patch("asyncio.create_subprocess_exec", return_value=_gh_result("")) as mock_exec:
             from ottonate.models import Label
+
             await github.swap_label("org", "repo", 42, Label.PLANNING, Label.PLAN_REVIEW)
         mock_exec.assert_called_once()
         args = mock_exec.call_args[0]
@@ -114,12 +121,14 @@ class TestGetCiStatus:
 class TestGetCiFailureLogs:
     @pytest.mark.asyncio
     async def test_extracts_run_id_from_details_url(self, github):
-        checks = [{
-            "name": "build",
-            "state": "COMPLETED",
-            "conclusion": "FAILURE",
-            "detailsUrl": "https://github.com/o/r/actions/runs/12345/job/678",
-        }]
+        checks = [
+            {
+                "name": "build",
+                "state": "COMPLETED",
+                "conclusion": "FAILURE",
+                "detailsUrl": "https://github.com/o/r/actions/runs/12345/job/678",
+            }
+        ]
         call_count = 0
 
         async def _mock_exec(*args, **kwargs):
@@ -158,6 +167,7 @@ class TestGetFileContent:
     @pytest.mark.asyncio
     async def test_decodes_base64(self, github):
         import base64
+
         content = base64.b64encode(b"hello world").decode()
         with patch("asyncio.create_subprocess_exec", return_value=_gh_result(content)):
             result = await github.get_file_content("o", "r", "README.md")

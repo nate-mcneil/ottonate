@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -100,7 +99,12 @@ class TestOttonateMemoryClient:
     @pytest.mark.asyncio
     async def test_search_team_returns_entries(self, memory_client, mock_bedrock_client):
         mock_bedrock_client.retrieve_memories.return_value = [
-            {"content": "Python is great", "namespace": "/ottonate/team/", "score": 0.9, "metadata": {}},
+            {
+                "content": "Python is great",
+                "namespace": "/ottonate/team/",
+                "score": 0.9,
+                "metadata": {},
+            },
         ]
         results = await memory_client.search_team("Python", top_k=5)
         assert len(results) == 1
@@ -110,7 +114,12 @@ class TestOttonateMemoryClient:
     @pytest.mark.asyncio
     async def test_search_repo(self, memory_client, mock_bedrock_client):
         mock_bedrock_client.retrieve_memories.return_value = [
-            {"content": "Use structlog", "namespace": "/ottonate/repos/ottonate/", "score": 0.85, "metadata": {}},
+            {
+                "content": "Use structlog",
+                "namespace": "/ottonate/repos/ottonate/",
+                "score": 0.85,
+                "metadata": {},
+            },
         ]
         results = await memory_client.search_repo("ottonate", "logging")
         assert len(results) == 1
@@ -129,7 +138,9 @@ class TestOttonateMemoryClient:
         mock_bedrock_client.retrieve_memories.return_value = [
             {"content": "hit", "score": 0.7, "metadata": {}},
         ]
-        results = await memory_client.search_all("test query", repo_name="ottonate", issue_ref="org/repo#1")
+        results = await memory_client.search_all(
+            "test query", repo_name="ottonate", issue_ref="org/repo#1"
+        )
         assert len(results) > 0
 
     @pytest.mark.asyncio

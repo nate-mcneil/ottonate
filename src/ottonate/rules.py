@@ -92,9 +92,7 @@ async def load_rules(
     )
 
 
-async def _load_layer(
-    owner: str, repo: str, github: GitHubClient, ref: str
-) -> tuple[dict, str]:
+async def _load_layer(owner: str, repo: str, github: GitHubClient, ref: str) -> tuple[dict, str]:
     """Fetch .ottonate/config.yml and .ottonate/rules.md from a repo."""
     config_yml = await github.get_file_content(owner, repo, ".ottonate/config.yml", ref)
     rules_md = await github.get_file_content(owner, repo, ".ottonate/rules.md", ref)
@@ -109,9 +107,7 @@ async def _load_layer(
     return parsed_config, rules_md or ""
 
 
-async def _load_org_context(
-    owner: str, eng_repo: str, github: GitHubClient, ref: str
-) -> str:
+async def _load_org_context(owner: str, eng_repo: str, github: GitHubClient, ref: str) -> str:
     """Load architecture docs from the engineering repo."""
     overview = await github.get_file_content(owner, eng_repo, "architecture/overview.md", ref)
     repos_md = await github.get_file_content(owner, eng_repo, "architecture/repos.md", ref)
@@ -142,9 +138,7 @@ async def search_decisions(
 
     for filename in files:
         if any(kw in filename.lower() for kw in kw_lower):
-            content = await github.get_file_content(
-                owner, eng_repo, f"decisions/{filename}", ref
-            )
+            content = await github.get_file_content(owner, eng_repo, f"decisions/{filename}", ref)
             if content:
                 matched_parts.append(content.strip())
 
@@ -162,9 +156,7 @@ def _merge_config(base: dict, overlay: dict) -> dict:
     return merged
 
 
-def _merge_agent_context(
-    org_rules_md: str, repo_rules_md: str, architecture_context: str
-) -> str:
+def _merge_agent_context(org_rules_md: str, repo_rules_md: str, architecture_context: str) -> str:
     """Combine all prose context with clear section headers."""
     parts: list[str] = []
     if architecture_context:
@@ -182,9 +174,7 @@ def _parse_repo_catalog(architecture_context: str) -> list[dict]:
     if not architecture_context:
         return repos
 
-    catalog_match = re.search(
-        r"## Repository Catalog\s*\n(.*)", architecture_context, re.DOTALL
-    )
+    catalog_match = re.search(r"## Repository Catalog\s*\n(.*)", architecture_context, re.DOTALL)
     if not catalog_match:
         return repos
 
@@ -201,9 +191,7 @@ def _parse_repo_catalog(architecture_context: str) -> list[dict]:
         name = name_match.group(1)
         repo_info: dict = {"name": name}
         for field_name in ("Purpose", "Stack", "Domain", "Owner"):
-            field_match = re.search(
-                rf"\*\*{field_name}\*\*:\s*(.+)", entry
-            )
+            field_match = re.search(rf"\*\*{field_name}\*\*:\s*(.+)", entry)
             if field_match:
                 repo_info[field_name.lower()] = field_match.group(1).strip()
         repos.append(repo_info)

@@ -68,13 +68,9 @@ class OttonateMemory:
             query = f"ticket {ticket_key} context plan decisions"
         results: list[MemoryEntry] = []
         if self._issue_id:
-            results.extend(
-                await self._search(self._issue_id, query, ticket_key, top_k)
-            )
+            results.extend(await self._search(self._issue_id, query, ticket_key, top_k))
         if self._broad_id:
-            results.extend(
-                await self._search(self._broad_id, query, None, top_k)
-            )
+            results.extend(await self._search(self._broad_id, query, None, top_k))
         results.sort(key=lambda x: x.score, reverse=True)
         return results[:top_k]
 
@@ -112,9 +108,7 @@ class OttonateMemory:
     async def store_decision(self, decision: str) -> None:
         if not self._broad_id:
             return
-        await self._store(
-            self._broad_id, None, f"decision_{uuid.uuid4().hex[:8]}", decision
-        )
+        await self._store(self._broad_id, None, f"decision_{uuid.uuid4().hex[:8]}", decision)
 
     # -- Internals --
 

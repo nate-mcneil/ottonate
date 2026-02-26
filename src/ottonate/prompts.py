@@ -80,7 +80,12 @@ Evaluate this plan and respond with JSON.
 
 
 def implementer_prompt(
-    ticket: Ticket, plan: str, branch_name: str, *, rules_context: str = "", memory_context: str = ""
+    ticket: Ticket,
+    plan: str,
+    branch_name: str,
+    *,
+    rules_context: str = "",
+    memory_context: str = "",
 ) -> str:
     rules = _rules_section(rules_context)
     mem = f"\n{memory_context}\n" if memory_context else ""
@@ -127,9 +132,7 @@ def review_responder_prompt(
     ticket: Ticket, comments: list[ReviewComment], repo_owner: str, repo_name: str
 ) -> str:
     comments_text = "\n\n".join(
-        f"### Comment #{c.id} by @{c.author}\n"
-        f"File: {c.path or 'general'}:{c.line or ''}\n"
-        f"{c.body}"
+        f"### Comment #{c.id} by @{c.author}\nFile: {c.path or 'general'}:{c.line or ''}\n{c.body}"
         for c in comments
     )
     return f"""## Issue: {ticket.issue_ref}

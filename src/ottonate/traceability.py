@@ -61,23 +61,17 @@ class TraceabilityGraph:
         target_id: str,
         relationship: str = "produces",
     ) -> None:
-        self._links.append(
-            TraceLink(source_type, source_id, target_type, target_id, relationship)
-        )
+        self._links.append(TraceLink(source_type, source_id, target_type, target_id, relationship))
 
     def get_artifact(self, artifact_id: str) -> Artifact | None:
         return self._artifacts.get(artifact_id)
 
     def get_children(self, parent_id: str) -> list[Artifact]:
-        child_ids = {
-            link.target_id for link in self._links if link.source_id == parent_id
-        }
+        child_ids = {link.target_id for link in self._links if link.source_id == parent_id}
         return [self._artifacts[aid] for aid in child_ids if aid in self._artifacts]
 
     def get_ancestors(self, artifact_id: str) -> list[Artifact]:
-        parent_ids = {
-            link.source_id for link in self._links if link.target_id == artifact_id
-        }
+        parent_ids = {link.source_id for link in self._links if link.target_id == artifact_id}
         ancestors = [self._artifacts[pid] for pid in parent_ids if pid in self._artifacts]
         for pid in list(parent_ids):
             ancestors.extend(self.get_ancestors(pid))
@@ -120,7 +114,7 @@ class TraceabilityGraph:
     def to_dict(self) -> dict:
         return {
             "artifacts": [asdict(a) for a in self._artifacts.values()],
-            "links": [asdict(l) for l in self._links],
+            "links": [asdict(link) for link in self._links],
         }
 
     def save(self, path: Path) -> None:

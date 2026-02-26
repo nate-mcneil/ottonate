@@ -31,10 +31,13 @@ class TestEnrichedStory:
 
     def test_to_markdown_uses_checkboxes_for_ac(self):
         story = EnrichedStory(
-            title="Test", description="Desc",
+            title="Test",
+            description="Desc",
             acceptance_criteria=["AC1"],
-            technical_notes=[], test_expectations=[],
-            estimate="S", dependencies=[],
+            technical_notes=[],
+            test_expectations=[],
+            estimate="S",
+            dependencies=[],
         )
         md = story.to_markdown()
         assert "- [ ] AC1" in md
@@ -76,9 +79,13 @@ class TestParseEnrichedStory:
 
     def test_parses_embedded_json(self):
         data = {
-            "title": "X", "description": "Y", "acceptance_criteria": [],
-            "technical_notes": [], "test_expectations": [],
-            "estimate": "M", "dependencies": [],
+            "title": "X",
+            "description": "Y",
+            "acceptance_criteria": [],
+            "technical_notes": [],
+            "test_expectations": [],
+            "estimate": "M",
+            "dependencies": [],
         }
         text = f"Here is the enriched story:\n{json.dumps(data)}\nDone."
         result = parse_enriched_story(text)
@@ -90,9 +97,14 @@ class TestParseEnrichedStory:
 
     def test_parses_repo_field(self):
         data = {
-            "title": "X", "description": "Y", "repo": "my-service",
-            "acceptance_criteria": [], "technical_notes": [],
-            "test_expectations": [], "estimate": "S", "dependencies": [],
+            "title": "X",
+            "description": "Y",
+            "repo": "my-service",
+            "acceptance_criteria": [],
+            "technical_notes": [],
+            "test_expectations": [],
+            "estimate": "S",
+            "dependencies": [],
         }
         result = parse_enriched_story(json.dumps(data))
         assert result is not None

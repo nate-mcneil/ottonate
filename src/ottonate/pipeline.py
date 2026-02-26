@@ -12,7 +12,7 @@ import structlog
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage, TextBlock, query
 
 from ottonate.config import OttonateConfig
-from ottonate.enrichment import enrich_story_prompt, parse_enriched_story
+from ottonate.enrichment import EnrichedStory, enrich_story_prompt, parse_enriched_story
 from ottonate.integrations.github import GitHubClient
 from ottonate.integrations.memory import OttonateMemory, format_memory_context
 from ottonate.models import (
@@ -115,13 +115,14 @@ async def run_agent(
                     log.debug("sdk_unknown_message", agent=agent_name, error=str(e))
                     continue
                 is_rate_limit = any(
-                    s in err_msg
-                    for s in ("rate_limit", "rate limit", "429", "overloaded")
+                    s in err_msg for s in ("rate_limit", "rate limit", "429", "overloaded")
                 )
                 if is_rate_limit:
                     saw_rate_limit = True
                     log.warning(
-                        "rate_limit_exception", agent=agent_name, delay=rate_limit_delay,
+                        "rate_limit_exception",
+                        agent=agent_name,
+                        delay=rate_limit_delay,
                     )
                     if on_rate_limit:
                         on_rate_limit()
@@ -134,7 +135,9 @@ async def run_agent(
                 if message.error == "rate_limit":
                     saw_rate_limit = True
                     log.warning(
-                        "rate_limit_inline", agent=agent_name, delay=rate_limit_delay,
+                        "rate_limit_inline",
+                        agent=agent_name,
+                        delay=rate_limit_delay,
                     )
                     if on_rate_limit:
                         on_rate_limit()
@@ -155,7 +158,9 @@ async def run_agent(
         has_output = bool(all_assistant_texts) or bool(result_text)
         if not has_output and saw_rate_limit:
             log.warning(
-                "rate_limit_session_retry", agent=agent_name, attempt=attempt,
+                "rate_limit_session_retry",
+                agent=agent_name,
+                attempt=attempt,
                 delay=rate_limit_delay,
             )
             if on_rate_limit:
@@ -296,15 +301,19 @@ class Pipeline:
             return
 
         await self.github.add_comment(
-            ticket.owner, ticket.repo, ticket.issue_number,
-            f"Spec PR: opened in engineering repo",
+            ticket.owner,
+            ticket.repo,
+            ticket.issue_number,
+            "Spec PR: opened in engineering repo",
         )
 
-        self.trace.add_artifact(Artifact(
-            type=ArtifactType.SPEC,
-            id=f"spec:{ticket.issue_ref}",
-            title=ticket.summary,
-        ))
+        self.trace.add_artifact(
+            Artifact(
+                type=ArtifactType.SPEC,
+                id=f"spec:{ticket.issue_ref}",
+                title=ticket.summary,
+            )
+        )
         await self.github.swap_label(
             ticket.owner, ticket.repo, ticket.issue_number, Label.SPEC, Label.SPEC_REVIEW
         )
@@ -324,23 +333,22 @@ class Pipeline:
         if not ticket.spec_pr_number:
             return
 
-        state = await self.github.get_pr_state(
-            ticket.owner, ticket.repo, ticket.spec_pr_number
-        )
+        state = await self.github.get_pr_state(ticket.owner, ticket.repo, ticket.spec_pr_number)
 
         if state == "MERGED":
             await self.github.swap_label(
-                ticket.owner, ticket.repo, ticket.issue_number,
-                Label.SPEC_REVIEW, Label.SPEC_APPROVED,
+                ticket.owner,
+                ticket.repo,
+                ticket.issue_number,
+                Label.SPEC_REVIEW,
+                Label.SPEC_APPROVED,
             )
         elif state == "CLOSED":
             await self._stuck(ticket, rules, "Spec PR was closed without merging")
 
     async def _handle_spec_approved(self, ticket: Ticket, rules: ResolvedRules) -> None:
         """agentSpecApproved -> agentBacklogGen: generate backlog stories from spec."""
-        comments = await self.github.get_comments(
-            ticket.owner, ticket.repo, ticket.issue_number
-        )
+        comments = await self.github.get_comments(ticket.owner, ticket.repo, ticket.issue_number)
 
         if any("Backlog PR:" in c or "Stories Created" in c for c in comments):
             log.info("backlog_already_exists", issue=ticket.issue_ref)
@@ -350,20 +358,22 @@ class Pipeline:
             return
 
         await self.github.swap_label(
-            ticket.owner, ticket.repo, ticket.issue_number,
-            Label.SPEC_APPROVED, Label.BACKLOG_GEN,
+            ticket.owner,
+            ticket.repo,
+            ticket.issue_number,
+            Label.SPEC_APPROVED,
+            Label.BACKLOG_GEN,
         )
 
         spec_text = await self.github.get_file_content(
-            ticket.owner, ticket.repo,
+            ticket.owner,
+            ticket.repo,
             f"specs/{ticket.issue_number}-*/SPEC.md",
             self.config.github_default_branch,
         )
         if not spec_text:
             spec_file = Path(ticket.work_dir) / "SPEC.md" if ticket.work_dir else None
-            spec_text = (
-                spec_file.read_text().strip() if spec_file and spec_file.exists() else ""
-            )
+            spec_text = spec_file.read_text().strip() if spec_file and spec_file.exists() else ""
 
         if not spec_text:
             await self._stuck(ticket, rules, "Could not find approved spec content")
@@ -379,12 +389,17 @@ class Pipeline:
         stories_json = _extract_json_array(result.text)
         if stories_json:
             await self.github.add_comment(
-                ticket.owner, ticket.repo, ticket.issue_number,
+                ticket.owner,
+                ticket.repo,
+                ticket.issue_number,
                 f"## Generated Backlog\n\n```json\n{json.dumps(stories_json, indent=2)}\n```",
             )
         await self.github.swap_label(
-            ticket.owner, ticket.repo, ticket.issue_number,
-            Label.BACKLOG_GEN, Label.BACKLOG_REVIEW,
+            ticket.owner,
+            ticket.repo,
+            ticket.issue_number,
+            Label.BACKLOG_GEN,
+            Label.BACKLOG_REVIEW,
         )
 
     async def _handle_backlog_review(self, ticket: Ticket, rules: ResolvedRules) -> None:
@@ -404,7 +419,9 @@ class Pipeline:
                     if "backlog approved" in lower or "stories approved" in lower:
                         await self._create_stories_from_backlog(ticket, rules)
                         await self.github.remove_label(
-                            ticket.owner, ticket.repo, ticket.issue_number,
+                            ticket.owner,
+                            ticket.repo,
+                            ticket.issue_number,
                             Label.BACKLOG_REVIEW.value,
                         )
                         return
@@ -413,25 +430,21 @@ class Pipeline:
                         return
                 return
 
-        state = await self.github.get_pr_state(
-            ticket.owner, ticket.repo, ticket.backlog_pr_number
-        )
+        state = await self.github.get_pr_state(ticket.owner, ticket.repo, ticket.backlog_pr_number)
 
         if state == "MERGED":
             await self._create_stories_from_backlog(ticket, rules)
             await self.github.remove_label(
-                ticket.owner, ticket.repo, ticket.issue_number,
+                ticket.owner,
+                ticket.repo,
+                ticket.issue_number,
                 Label.BACKLOG_REVIEW.value,
             )
         elif state == "CLOSED":
             await self._stuck(ticket, rules, "Backlog PR was closed without merging")
 
-    async def _create_stories_from_backlog(
-        self, ticket: Ticket, rules: ResolvedRules
-    ) -> list[str]:
-        comments = await self.github.get_comments(
-            ticket.owner, ticket.repo, ticket.issue_number
-        )
+    async def _create_stories_from_backlog(self, ticket: Ticket, rules: ResolvedRules) -> list[str]:
+        comments = await self.github.get_comments(ticket.owner, ticket.repo, ticket.issue_number)
         stories_data = None
         for comment in reversed(comments):
             if "Generated Backlog" in comment:
@@ -449,9 +462,7 @@ class Pipeline:
             enriched = await self._enrich_story(story)
             title = enriched.title if enriched else story.get("title", "Untitled Story")
             body = enriched.to_markdown() if enriched else story.get("description", "")
-            target_repo = (
-                (enriched.repo if enriched else story.get("repo", "")) or ticket.repo
-            )
+            target_repo = (enriched.repo if enriched else story.get("repo", "")) or ticket.repo
 
             labels = [self.agent_label]
             try:
@@ -461,32 +472,36 @@ class Pipeline:
                 ref = f"{ticket.owner}/{target_repo}#{number}"
                 created_refs.append(ref)
 
-                self.trace.add_artifact(Artifact(
-                    type=ArtifactType.STORY, id=ref, title=title,
-                ))
+                self.trace.add_artifact(
+                    Artifact(
+                        type=ArtifactType.STORY,
+                        id=ref,
+                        title=title,
+                    )
+                )
                 self.trace.link(
-                    ArtifactType.SPEC, f"spec:{ticket.issue_ref}",
-                    ArtifactType.STORY, ref,
+                    ArtifactType.SPEC,
+                    f"spec:{ticket.issue_ref}",
+                    ArtifactType.STORY,
+                    ref,
                 )
 
                 if ticket.project_id:
                     issue_url = f"https://github.com/{ticket.owner}/{target_repo}/issues/{number}"
-                    await self.github.add_to_project(
-                        ticket.owner, ticket.project_id, issue_url
-                    )
+                    await self.github.add_to_project(ticket.owner, ticket.project_id, issue_url)
             except Exception:
                 log.exception("story_creation_failed", title=title, repo=target_repo)
 
         if created_refs:
             await self.github.add_comment(
-                ticket.owner, ticket.repo, ticket.issue_number,
+                ticket.owner,
+                ticket.repo,
+                ticket.issue_number,
                 f"## Stories Created\n\n{', '.join(created_refs)}",
             )
         return created_refs
 
-    async def _enrich_story(self, story_data: dict) -> "EnrichedStory | None":
-        from ottonate.enrichment import EnrichedStory
-
+    async def _enrich_story(self, story_data: dict) -> EnrichedStory | None:
         prompt = enrich_story_prompt(story_data)
         try:
             result = await self._run("otto-planner", prompt, None)
@@ -516,9 +531,12 @@ class Pipeline:
         result = await self._run("otto-planner", prompt, ticket.work_dir)
 
         log.info(
-            "planner_done", issue=ticket.issue_ref,
-            turns=result.turns_used, cost=result.cost_usd,
-            result_len=len(result.text), result_preview=result.text[:200],
+            "planner_done",
+            issue=ticket.issue_ref,
+            turns=result.turns_used,
+            cost=result.cost_usd,
+            result_len=len(result.text),
+            result_preview=result.text[:200],
         )
 
         if "[NEEDS_MORE_INFO]" in result.text or result.is_error:
@@ -536,7 +554,9 @@ class Pipeline:
             return
 
         await self.github.add_comment(
-            ticket.owner, ticket.repo, ticket.issue_number,
+            ticket.owner,
+            ticket.repo,
+            ticket.issue_number,
             "## Development Plan\n\nPlan committed to feature branch as PLAN.md",
         )
         ticket.plan = plan_text
@@ -559,43 +579,50 @@ class Pipeline:
 
         if verdict == "pass":
             await self.github.swap_label(
-                ticket.owner, ticket.repo, ticket.issue_number,
-                Label.PLAN_REVIEW, Label.PLAN,
+                ticket.owner,
+                ticket.repo,
+                ticket.issue_number,
+                Label.PLAN_REVIEW,
+                Label.PLAN,
             )
         elif verdict == "fail_retryable":
             if not self._check_retries(ticket.issue_ref, "plan", self.config.max_plan_retries):
                 await self._stuck(ticket, rules, "Plan retry limit exceeded")
                 return
             await self.github.swap_label(
-                ticket.owner, ticket.repo, ticket.issue_number,
-                Label.PLAN_REVIEW, Label.PLANNING,
+                ticket.owner,
+                ticket.repo,
+                ticket.issue_number,
+                Label.PLAN_REVIEW,
+                Label.PLANNING,
             )
             feedback = _parse_quality_feedback(result.text)
             description = await self.github.get_issue_body(
                 ticket.owner, ticket.repo, ticket.issue_number
             )
             desc_with_feedback = description + f"\n\n## Previous Plan Feedback\n{feedback}"
-            prompt = planner_prompt(
-                ticket, desc_with_feedback, rules_context=rules.agent_context
-            )
+            prompt = planner_prompt(ticket, desc_with_feedback, rules_context=rules.agent_context)
             result = await self._run("otto-planner", prompt, ticket.work_dir)
             if "[NEEDS_MORE_INFO]" in result.text or result.is_error:
                 await self._stuck(ticket, rules, "Planner failed on retry")
                 return
             plan_file = Path(ticket.work_dir) / "PLAN.md" if ticket.work_dir else None
             revised_plan = (
-                plan_file.read_text().strip()
-                if plan_file and plan_file.exists()
-                else result.text
+                plan_file.read_text().strip() if plan_file and plan_file.exists() else result.text
             )
             await self.github.add_comment(
-                ticket.owner, ticket.repo, ticket.issue_number,
+                ticket.owner,
+                ticket.repo,
+                ticket.issue_number,
                 "## Development Plan (revised)\n\nRevised plan committed to branch as PLAN.md",
             )
             ticket.plan = revised_plan
             await self.github.swap_label(
-                ticket.owner, ticket.repo, ticket.issue_number,
-                Label.PLANNING, Label.PLAN_REVIEW,
+                ticket.owner,
+                ticket.repo,
+                ticket.issue_number,
+                Label.PLANNING,
+                Label.PLAN_REVIEW,
             )
         else:
             await self._stuck(ticket, rules, "Quality gate escalated")
@@ -603,8 +630,11 @@ class Pipeline:
     async def _handle_plan(self, ticket: Ticket, rules: ResolvedRules) -> None:
         """agentPlan -> agentImplementing -> agentPR: run implementer."""
         await self.github.swap_label(
-            ticket.owner, ticket.repo, ticket.issue_number,
-            Label.PLAN, Label.IMPLEMENTING,
+            ticket.owner,
+            ticket.repo,
+            ticket.issue_number,
+            Label.PLAN,
+            Label.IMPLEMENTING,
         )
 
         plan = ticket.plan or await self._get_plan(ticket)
@@ -618,8 +648,10 @@ class Pipeline:
         result = await self._run("otto-implementer", prompt, ticket.work_dir)
 
         log.info(
-            "implementer_done", issue=ticket.issue_ref,
-            turns=result.turns_used, cost=result.cost_usd,
+            "implementer_done",
+            issue=ticket.issue_ref,
+            turns=result.turns_used,
+            cost=result.cost_usd,
         )
 
         if "[IMPLEMENTATION_BLOCKED]" in result.text or result.is_error:
@@ -634,22 +666,32 @@ class Pipeline:
         pr_number = _extract_pr_number(result.text)
         if pr_number:
             ticket.pr_number = pr_number
-            self.trace.add_artifact(Artifact(
-                type=ArtifactType.PR, id=f"PR#{pr_number}",
-                title=f"{ticket.issue_ref} PR",
-                metadata={"repo": ticket.full_repo},
-            ))
+            self.trace.add_artifact(
+                Artifact(
+                    type=ArtifactType.PR,
+                    id=f"PR#{pr_number}",
+                    title=f"{ticket.issue_ref} PR",
+                    metadata={"repo": ticket.full_repo},
+                )
+            )
             self.trace.link(
-                ArtifactType.STORY, ticket.issue_ref,
-                ArtifactType.PR, f"PR#{pr_number}",
+                ArtifactType.STORY,
+                ticket.issue_ref,
+                ArtifactType.PR,
+                f"PR#{pr_number}",
             )
             await self.github.add_comment(
-                ticket.owner, ticket.repo, ticket.issue_number,
+                ticket.owner,
+                ticket.repo,
+                ticket.issue_number,
                 f"PR created: #{pr_number}",
             )
             await self.github.swap_label(
-                ticket.owner, ticket.repo, ticket.issue_number,
-                Label.IMPLEMENTING, Label.PR,
+                ticket.owner,
+                ticket.repo,
+                ticket.issue_number,
+                Label.IMPLEMENTING,
+                Label.PR,
             )
         else:
             await self._stuck(
@@ -661,14 +703,10 @@ class Pipeline:
         owner, repo = ticket.owner, ticket.repo
 
         if not ticket.pr_number:
-            pr_number, pr_state = await self.github.find_pr(
-                owner, repo, str(ticket.issue_number)
-            )
+            pr_number, pr_state = await self.github.find_pr(owner, repo, str(ticket.issue_number))
             if pr_number and pr_state == "MERGED":
                 log.info("pr_already_merged", issue=ticket.issue_ref, pr_number=pr_number)
-                await self.github.remove_label(
-                    owner, repo, ticket.issue_number, Label.PR.value
-                )
+                await self.github.remove_label(owner, repo, ticket.issue_number, Label.PR.value)
                 return
             elif pr_number:
                 ticket.pr_number = pr_number
@@ -684,14 +722,10 @@ class Pipeline:
                 owner, repo, ticket.issue_number, Label.PR, Label.SELF_REVIEW
             )
         elif status == CIStatus.FAILED:
-            if not self._check_retries(
-                ticket.issue_ref, "ci_fix", self.config.max_ci_fix_retries
-            ):
+            if not self._check_retries(ticket.issue_ref, "ci_fix", self.config.max_ci_fix_retries):
                 await self._stuck(ticket, rules, "CI fix retry limit exceeded")
                 return
-            await self.github.swap_label(
-                owner, repo, ticket.issue_number, Label.PR, Label.CI_FIX
-            )
+            await self.github.swap_label(owner, repo, ticket.issue_number, Label.PR, Label.CI_FIX)
             failure_logs = await self.github.get_ci_failure_logs(owner, repo, ticket.pr_number)
             prompt = ci_fixer_prompt(ticket, failure_logs)
             result = await self._run("otto-ci-fixer", prompt, ticket.work_dir)
@@ -701,9 +735,7 @@ class Pipeline:
             if "[CI_FIX_BLOCKED]" in result.text or result.is_error:
                 await self._stuck(ticket, rules, "CI fix blocked")
                 return
-            await self.github.swap_label(
-                owner, repo, ticket.issue_number, Label.CI_FIX, Label.PR
-            )
+            await self.github.swap_label(owner, repo, ticket.issue_number, Label.CI_FIX, Label.PR)
 
     async def _handle_self_review(self, ticket: Ticket, rules: ResolvedRules) -> None:
         """agentSelfReview -> agentReview or back to fix."""
@@ -721,16 +753,12 @@ class Pipeline:
                 owner, repo, ticket.issue_number, Label.SELF_REVIEW, Label.REVIEW
             )
             if rules.notify_team:
-                await self.github.request_review(
-                    owner, repo, ticket.pr_number, rules.notify_team
-                )
+                await self.github.request_review(owner, repo, ticket.pr_number, rules.notify_team)
         else:
             await self.github.swap_label(
                 owner, repo, ticket.issue_number, Label.SELF_REVIEW, Label.IMPLEMENTING
             )
-            prompt = (
-                f"The self-review found issues:\n\n{result.text}\n\nFix these issues and push."
-            )
+            prompt = f"The self-review found issues:\n\n{result.text}\n\nFix these issues and push."
             await self._run("otto-implementer", prompt, ticket.work_dir)
             await self.github.swap_label(
                 owner, repo, ticket.issue_number, Label.IMPLEMENTING, Label.PR
@@ -741,13 +769,9 @@ class Pipeline:
         owner, repo = ticket.owner, ticket.repo
 
         if not ticket.pr_number:
-            pr_number, pr_state = await self.github.find_pr(
-                owner, repo, str(ticket.issue_number)
-            )
+            pr_number, pr_state = await self.github.find_pr(owner, repo, str(ticket.issue_number))
             if pr_number and pr_state == "MERGED":
-                await self.github.remove_label(
-                    owner, repo, ticket.issue_number, Label.REVIEW.value
-                )
+                await self.github.remove_label(owner, repo, ticket.issue_number, Label.REVIEW.value)
                 return
             elif pr_number:
                 ticket.pr_number = pr_number
@@ -763,9 +787,7 @@ class Pipeline:
                     owner, repo, ticket.issue_number, Label.REVIEW, Label.MERGE_READY
                 )
         elif review_status in (ReviewStatus.CHANGES_REQUESTED, ReviewStatus.COMMENTED):
-            if not self._check_retries(
-                ticket.issue_ref, "review", self.config.max_review_retries
-            ):
+            if not self._check_retries(ticket.issue_ref, "review", self.config.max_review_retries):
                 await self._stuck(ticket, rules, "Review address retry limit exceeded")
                 return
             await self.github.swap_label(
@@ -777,17 +799,18 @@ class Pipeline:
             )
             if not comments:
                 await self.github.swap_label(
-                    owner, repo, ticket.issue_number,
-                    Label.ADDRESSING_REVIEW, Label.REVIEW,
+                    owner,
+                    repo,
+                    ticket.issue_number,
+                    Label.ADDRESSING_REVIEW,
+                    Label.REVIEW,
                 )
                 return
 
             prompt = review_responder_prompt(ticket, comments, owner, repo)
             result = await self._run("otto-review-responder", prompt, ticket.work_dir)
 
-            log.info(
-                "review_responder_done", issue=ticket.issue_ref, turns=result.turns_used
-            )
+            log.info("review_responder_done", issue=ticket.issue_ref, turns=result.turns_used)
 
             if "[REVIEW_ESCALATE]" in result.text:
                 await self._stuck(ticket, rules, "Review comment requires human decision")
@@ -801,13 +824,13 @@ class Pipeline:
         """agentMergeReady: notify and done."""
         if rules.notify_team:
             await self.github.mention_on_issue(
-                ticket.owner, ticket.repo, ticket.issue_number,
+                ticket.owner,
+                ticket.repo,
+                ticket.issue_number,
                 rules.notify_team,
                 f"PR #{ticket.pr_number} is merge-ready (approved + CI green). Ready for merge.",
             )
-        log.info(
-            "ticket_merge_ready", issue=ticket.issue_ref, pr_number=ticket.pr_number
-        )
+        log.info("ticket_merge_ready", issue=ticket.issue_ref, pr_number=ticket.pr_number)
 
     # -- Helpers --
 
@@ -823,12 +846,16 @@ class Pipeline:
                 ticket.owner, ticket.repo, ticket.issue_number, Label.STUCK.value
             )
         await self.github.add_comment(
-            ticket.owner, ticket.repo, ticket.issue_number,
+            ticket.owner,
+            ticket.repo,
+            ticket.issue_number,
             f"Ottonate agent stopped: {reason}",
         )
         if rules.notify_team:
             await self.github.mention_on_issue(
-                ticket.owner, ticket.repo, ticket.issue_number,
+                ticket.owner,
+                ticket.repo,
+                ticket.issue_number,
                 rules.notify_team,
                 f"Issue stuck: {reason}",
             )
@@ -837,14 +864,12 @@ class Pipeline:
         plan_file = Path(ticket.work_dir) / "PLAN.md" if ticket.work_dir else None
         if plan_file and plan_file.exists():
             return plan_file.read_text().strip()
-        comments = await self.github.get_comments(
-            ticket.owner, ticket.repo, ticket.issue_number
-        )
+        comments = await self.github.get_comments(ticket.owner, ticket.repo, ticket.issue_number)
         for comment in reversed(comments):
             marker = "## Development Plan"
             idx = comment.find(marker)
             if idx != -1:
-                return comment[idx + len(marker):].strip()
+                return comment[idx + len(marker) :].strip()
         return ""
 
 
@@ -908,7 +933,9 @@ def _extract_pr_number(text: str) -> int | None:
     return None
 
 
-def _slugify_branch(issue_number: int, plan: str, pattern: str = "{issue_number}/{description}") -> str:
+def _slugify_branch(
+    issue_number: int, plan: str, pattern: str = "{issue_number}/{description}"
+) -> str:
     summary = plan.split("\n")[0][:50] if plan else "implementation"
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", summary).strip("-").lower()
     return pattern.format(issue_number=issue_number, description=slug)

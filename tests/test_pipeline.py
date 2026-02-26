@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -14,7 +13,6 @@ from ottonate.pipeline import (
     _parse_review_verdict,
     _slugify_branch,
 )
-from ottonate.rules import ResolvedRules
 
 
 @pytest.fixture
@@ -91,8 +89,10 @@ class TestHandleNew:
         sample_ticket.work_dir = str(tmp_path)
         sample_ticket.repo = "engineering"
 
-        with patch.object(pipeline, "_handle_spec", new_callable=AsyncMock) as mock_spec, \
-             patch.object(pipeline, "_handle_agent", new_callable=AsyncMock) as mock_agent:
+        with (
+            patch.object(pipeline, "_handle_spec", new_callable=AsyncMock) as mock_spec,
+            patch.object(pipeline, "_handle_agent", new_callable=AsyncMock) as mock_agent,
+        ):
             await pipeline.handle_new(sample_ticket, sample_rules)
 
         mock_spec.assert_called_once_with(sample_ticket, sample_rules)
@@ -105,8 +105,10 @@ class TestHandleNew:
         sample_ticket.work_dir = str(tmp_path)
         sample_ticket.repo = "my-service"
 
-        with patch.object(pipeline, "_handle_spec", new_callable=AsyncMock) as mock_spec, \
-             patch.object(pipeline, "_handle_agent", new_callable=AsyncMock) as mock_agent:
+        with (
+            patch.object(pipeline, "_handle_spec", new_callable=AsyncMock) as mock_spec,
+            patch.object(pipeline, "_handle_agent", new_callable=AsyncMock) as mock_agent,
+        ):
             await pipeline.handle_new(sample_ticket, sample_rules)
 
         mock_agent.assert_called_once_with(sample_ticket, sample_rules)
@@ -205,13 +207,12 @@ class TestHandlePlanReview:
 
 class TestHandlePlan:
     @pytest.mark.asyncio
-    async def test_implementer_creates_pr(
-        self, pipeline, sample_ticket, sample_rules, mock_github
-    ):
+    async def test_implementer_creates_pr(self, pipeline, sample_ticket, sample_rules, mock_github):
         sample_ticket.plan = "the plan"
 
         with patch.object(
-            pipeline, "_run",
+            pipeline,
+            "_run",
             return_value=_agent_result("PR created: https://github.com/o/r/pull/7"),
         ):
             await pipeline._handle_plan(sample_ticket, sample_rules)
@@ -222,14 +223,10 @@ class TestHandlePlan:
         )
 
     @pytest.mark.asyncio
-    async def test_implementer_blocked(
-        self, pipeline, sample_ticket, sample_rules, mock_github
-    ):
+    async def test_implementer_blocked(self, pipeline, sample_ticket, sample_rules, mock_github):
         sample_ticket.plan = "the plan"
 
-        with patch.object(
-            pipeline, "_run", return_value=_agent_result("[IMPLEMENTATION_BLOCKED]")
-        ):
+        with patch.object(pipeline, "_run", return_value=_agent_result("[IMPLEMENTATION_BLOCKED]")):
             await pipeline._handle_plan(sample_ticket, sample_rules)
 
         mock_github.add_comment.assert_called()
@@ -247,9 +244,7 @@ class TestHandlePr:
         )
 
     @pytest.mark.asyncio
-    async def test_ci_failed_runs_fixer(
-        self, pipeline, sample_ticket, sample_rules, mock_github
-    ):
+    async def test_ci_failed_runs_fixer(self, pipeline, sample_ticket, sample_rules, mock_github):
         sample_ticket.pr_number = 10
         mock_github.get_ci_status = AsyncMock(return_value=CIStatus.FAILED)
         mock_github.get_ci_failure_logs = AsyncMock(return_value="error log")
@@ -257,9 +252,7 @@ class TestHandlePr:
         with patch.object(pipeline, "_run", return_value=_agent_result("[CI_FIX_COMPLETE]")):
             await pipeline._handle_pr(sample_ticket, sample_rules)
 
-        mock_github.swap_label.assert_any_call(
-            "testorg", "test-repo", 42, Label.CI_FIX, Label.PR
-        )
+        mock_github.swap_label.assert_any_call("testorg", "test-repo", 42, Label.CI_FIX, Label.PR)
 
     @pytest.mark.asyncio
     async def test_ci_pending_noop(self, pipeline, sample_ticket, sample_rules, mock_github):
@@ -272,9 +265,7 @@ class TestHandlePr:
 
 class TestHandleReview:
     @pytest.mark.asyncio
-    async def test_approved_and_ci_green(
-        self, pipeline, sample_ticket, sample_rules, mock_github
-    ):
+    async def test_approved_and_ci_green(self, pipeline, sample_ticket, sample_rules, mock_github):
         sample_ticket.pr_number = 10
         mock_github.get_review_status = AsyncMock(return_value=ReviewStatus.APPROVED)
         mock_github.get_ci_status = AsyncMock(return_value=CIStatus.PASSED)
@@ -324,8 +315,11 @@ class TestGetPlan:
     @pytest.mark.asyncio
     async def test_reads_from_file(self, pipeline, mock_github, tmp_path):
         ticket = Ticket(
-            owner="testorg", repo="test-repo", issue_number=42,
-            labels=set(), work_dir=str(tmp_path),
+            owner="testorg",
+            repo="test-repo",
+            issue_number=42,
+            labels=set(),
+            work_dir=str(tmp_path),
         )
         (tmp_path / "PLAN.md").write_text("Plan from file")
         result = await pipeline._get_plan(ticket)
@@ -334,20 +328,28 @@ class TestGetPlan:
     @pytest.mark.asyncio
     async def test_falls_back_to_comments(self, pipeline, mock_github, tmp_path):
         ticket = Ticket(
-            owner="testorg", repo="test-repo", issue_number=42,
-            labels=set(), work_dir=str(tmp_path),
+            owner="testorg",
+            repo="test-repo",
+            issue_number=42,
+            labels=set(),
+            work_dir=str(tmp_path),
         )
-        mock_github.get_comments = AsyncMock(return_value=[
-            "## Development Plan\n\nPlan from comment",
-        ])
+        mock_github.get_comments = AsyncMock(
+            return_value=[
+                "## Development Plan\n\nPlan from comment",
+            ]
+        )
         result = await pipeline._get_plan(ticket)
         assert result == "Plan from comment"
 
     @pytest.mark.asyncio
     async def test_returns_empty_if_none_found(self, pipeline, mock_github, tmp_path):
         ticket = Ticket(
-            owner="testorg", repo="test-repo", issue_number=42,
-            labels=set(), work_dir=str(tmp_path),
+            owner="testorg",
+            repo="test-repo",
+            issue_number=42,
+            labels=set(),
+            work_dir=str(tmp_path),
         )
         mock_github.get_comments = AsyncMock(return_value=[])
         result = await pipeline._get_plan(ticket)

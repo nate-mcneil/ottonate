@@ -30,7 +30,8 @@ class Scheduler:
         )
         self._rate_limited_until: float = 0.0
         self.pipeline = Pipeline(
-            config, self.github,
+            config,
+            self.github,
             memory=self.memory,
             on_rate_limit=self._signal_rate_limit,
         )
@@ -131,26 +132,18 @@ class Scheduler:
 
             if stage is None:
                 if is_eng_repo:
-                    asyncio.create_task(
-                        self._handle_with_semaphore(ticket, new_ticket=True)
-                    )
+                    asyncio.create_task(self._handle_with_semaphore(ticket, new_ticket=True))
                 else:
-                    asyncio.create_task(
-                        self._handle_with_semaphore(ticket, new_ticket=True)
-                    )
+                    asyncio.create_task(self._handle_with_semaphore(ticket, new_ticket=True))
             elif stage in ACTIONABLE_LABELS:
                 asyncio.create_task(self._handle_with_semaphore(ticket))
 
-    async def _handle_with_semaphore(
-        self, ticket: Ticket, *, new_ticket: bool = False
-    ) -> None:
+    async def _handle_with_semaphore(self, ticket: Ticket, *, new_ticket: bool = False) -> None:
         flight_key = ticket.issue_ref
         self._in_flight.add(flight_key)
         try:
             async with self._semaphore:
-                rules = await load_rules(
-                    ticket.owner, ticket.repo, self.config, self.github
-                )
+                rules = await load_rules(ticket.owner, ticket.repo, self.config, self.github)
                 await self._ensure_workspace(ticket)
                 if new_ticket:
                     await self.pipeline.handle_new(ticket, rules)
@@ -173,7 +166,11 @@ class Scheduler:
         path.parent.mkdir(parents=True, exist_ok=True)
 
         proc = await asyncio.create_subprocess_exec(
-            "gh", "repo", "clone", ticket.full_repo, str(path),
+            "gh",
+            "repo",
+            "clone",
+            ticket.full_repo,
+            str(path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

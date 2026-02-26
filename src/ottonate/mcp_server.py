@@ -7,14 +7,14 @@ import logging
 import uuid
 from typing import Any
 
-logging.getLogger("bedrock_agentcore").setLevel(logging.WARNING)
-
 from bedrock_agentcore.memory import MemoryClient
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from ottonate.config import OttonateConfig
+
+logging.getLogger("bedrock_agentcore").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
@@ -188,11 +188,13 @@ class OttonateMemoryClient:
             for record in records:
                 score = record.get("score", 1.0)
                 if score >= min_score:
-                    results.append({
-                        "content": record.get("content", record.get("text", "")),
-                        "namespace": record.get("namespace", ""),
-                        "score": score,
-                    })
+                    results.append(
+                        {
+                            "content": record.get("content", record.get("text", "")),
+                            "namespace": record.get("namespace", ""),
+                            "score": score,
+                        }
+                    )
         except Exception as e:
             logger.error("Memory search failed: %s", e)
         return results
@@ -345,7 +347,9 @@ SEARCH_TOOLS: list[Tool] = [
     ),
     Tool(
         name="search_repo",
-        description="Search within a specific repository's memories for patterns, bugs, and conventions.",
+        description=(
+            "Search within a specific repository's memories for patterns, bugs, and conventions."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -385,7 +389,9 @@ SEARCH_TOOLS: list[Tool] = [
     ),
     Tool(
         name="search_similar",
-        description="Find similar past work based on a description. Searches across all memory stores.",
+        description=(
+            "Find similar past work based on a description. Searches across all memory stores."
+        ),
         inputSchema={
             "type": "object",
             "properties": {

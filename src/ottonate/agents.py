@@ -13,9 +13,7 @@ AGENTS_DIR = Path(__file__).resolve().parent.parent.parent / "agents"
 TARGET_DIR = Path.home() / ".claude" / "agents"
 
 
-def sync_agent_definitions(
-    source: Path | None = None, target: Path | None = None
-) -> list[str]:
+def sync_agent_definitions(source: Path | None = None, target: Path | None = None) -> list[str]:
     """Copy agent .md files to ~/.claude/agents/ when the repo copy is newer.
 
     Returns list of filenames that were updated.

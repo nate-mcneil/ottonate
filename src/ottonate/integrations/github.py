@@ -19,12 +19,18 @@ class GitHubClient:
     async def search_issues(self, owner: str, label: str) -> list[dict]:
         """Search for issues with a label across all repos in the org."""
         stdout = await self._gh(
-            "search", "issues",
-            "--owner", owner,
-            "--label", label,
-            "--state", "open",
-            "--json", "repository,number,labels,title",
-            "--limit", "100",
+            "search",
+            "issues",
+            "--owner",
+            owner,
+            "--label",
+            label,
+            "--state",
+            "open",
+            "--json",
+            "repository,number,labels,title",
+            "--limit",
+            "100",
         )
         if not stdout:
             return []
@@ -32,12 +38,18 @@ class GitHubClient:
 
     async def list_issues(self, owner: str, repo: str, label: str) -> list[dict]:
         stdout = await self._gh(
-            "issue", "list",
-            "--repo", f"{owner}/{repo}",
-            "--label", label,
-            "--state", "open",
-            "--json", "number,labels,title",
-            "--limit", "50",
+            "issue",
+            "list",
+            "--repo",
+            f"{owner}/{repo}",
+            "--label",
+            label,
+            "--state",
+            "open",
+            "--json",
+            "number,labels,title",
+            "--limit",
+            "50",
         )
         if not stdout:
             return []
@@ -45,9 +57,13 @@ class GitHubClient:
 
     async def get_issue(self, owner: str, repo: str, number: int) -> dict:
         stdout = await self._gh(
-            "issue", "view", str(number),
-            "--repo", f"{owner}/{repo}",
-            "--json", "number,title,body,labels,state",
+            "issue",
+            "view",
+            str(number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--json",
+            "number,title,body,labels,state",
         )
         if not stdout:
             return {}
@@ -63,12 +79,16 @@ class GitHubClient:
         self, owner: str, repo: str, title: str, body: str, labels: list[str] | None = None
     ) -> int:
         args = [
-            "issue", "create",
-            "--repo", f"{owner}/{repo}",
-            "--title", title,
-            "--body", body,
+            "issue",
+            "create",
+            "--repo",
+            f"{owner}/{repo}",
+            "--title",
+            title,
+            "--body",
+            body,
         ]
-        for lbl in (labels or []):
+        for lbl in labels or []:
             args.extend(["--label", lbl])
         stdout = await self._gh(*args)
         match = re.search(r"/issues/(\d+)", stdout or "")
@@ -80,25 +100,36 @@ class GitHubClient:
 
     async def close_issue(self, owner: str, repo: str, number: int) -> None:
         await self._gh(
-            "issue", "close", str(number),
-            "--repo", f"{owner}/{repo}",
+            "issue",
+            "close",
+            str(number),
+            "--repo",
+            f"{owner}/{repo}",
         )
 
     # -- Label operations --
 
     async def add_label(self, owner: str, repo: str, number: int, label: str) -> None:
         await self._gh(
-            "issue", "edit", str(number),
-            "--repo", f"{owner}/{repo}",
-            "--add-label", label,
+            "issue",
+            "edit",
+            str(number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--add-label",
+            label,
         )
         log.info("label_added", repo=f"{owner}/{repo}", number=number, label=label)
 
     async def remove_label(self, owner: str, repo: str, number: int, label: str) -> None:
         await self._gh(
-            "issue", "edit", str(number),
-            "--repo", f"{owner}/{repo}",
-            "--remove-label", label,
+            "issue",
+            "edit",
+            str(number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--remove-label",
+            label,
         )
         log.info("label_removed", repo=f"{owner}/{repo}", number=number, label=label)
 
@@ -106,14 +137,22 @@ class GitHubClient:
         self, owner: str, repo: str, number: int, remove: Label, add: Label
     ) -> None:
         await self._gh(
-            "issue", "edit", str(number),
-            "--repo", f"{owner}/{repo}",
-            "--remove-label", remove.value,
-            "--add-label", add.value,
+            "issue",
+            "edit",
+            str(number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--remove-label",
+            remove.value,
+            "--add-label",
+            add.value,
         )
         log.info(
-            "label_swap", repo=f"{owner}/{repo}", number=number,
-            removed=remove.value, added=add.value,
+            "label_swap",
+            repo=f"{owner}/{repo}",
+            number=number,
+            removed=remove.value,
+            added=add.value,
         )
 
     async def get_issue_labels(self, owner: str, repo: str, number: int) -> list[str]:
@@ -124,16 +163,24 @@ class GitHubClient:
 
     async def add_comment(self, owner: str, repo: str, number: int, body: str) -> None:
         await self._gh(
-            "issue", "comment", str(number),
-            "--repo", f"{owner}/{repo}",
-            "--body", body,
+            "issue",
+            "comment",
+            str(number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--body",
+            body,
         )
 
     async def get_comments(self, owner: str, repo: str, number: int) -> list[str]:
         stdout = await self._gh(
-            "issue", "view", str(number),
-            "--repo", f"{owner}/{repo}",
-            "--json", "comments",
+            "issue",
+            "view",
+            str(number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--json",
+            "comments",
         )
         if not stdout:
             return []
@@ -142,15 +189,18 @@ class GitHubClient:
 
     # -- PR operations --
 
-    async def find_pr(
-        self, owner: str, repo: str, issue_key: str
-    ) -> tuple[int | None, str | None]:
+    async def find_pr(self, owner: str, repo: str, issue_key: str) -> tuple[int | None, str | None]:
         stdout = await self._gh(
-            "pr", "list",
-            "--repo", f"{owner}/{repo}",
-            "--state", "all",
-            "--search", issue_key,
-            "--json", "number,headRefName,state",
+            "pr",
+            "list",
+            "--repo",
+            f"{owner}/{repo}",
+            "--state",
+            "all",
+            "--search",
+            issue_key,
+            "--json",
+            "number,headRefName,state",
         )
         if not stdout:
             return None, None
@@ -164,37 +214,46 @@ class GitHubClient:
 
     async def get_pr_state(self, owner: str, repo: str, pr_number: int) -> str:
         stdout = await self._gh(
-            "pr", "view", str(pr_number),
-            "--repo", f"{owner}/{repo}",
-            "--json", "state",
+            "pr",
+            "view",
+            str(pr_number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--json",
+            "state",
         )
         if not stdout:
             return "UNKNOWN"
         data = json.loads(stdout)
         return data.get("state", "UNKNOWN").upper()
 
-    async def create_pr(
-        self, owner: str, repo: str, branch: str, title: str, body: str
-    ) -> int:
+    async def create_pr(self, owner: str, repo: str, branch: str, title: str, body: str) -> int:
         stdout = await self._gh(
-            "pr", "create",
-            "--repo", f"{owner}/{repo}",
-            "--head", branch,
-            "--title", title,
-            "--body", body,
+            "pr",
+            "create",
+            "--repo",
+            f"{owner}/{repo}",
+            "--head",
+            branch,
+            "--title",
+            title,
+            "--body",
+            body,
         )
         match = re.search(r"/pull/(\d+)", stdout or "")
         if match:
             return int(match.group(1))
         raise RuntimeError(f"Failed to parse PR number from: {stdout}")
 
-    async def request_review(
-        self, owner: str, repo: str, pr_number: int, reviewer: str
-    ) -> None:
+    async def request_review(self, owner: str, repo: str, pr_number: int, reviewer: str) -> None:
         await self._gh(
-            "pr", "edit", str(pr_number),
-            "--repo", f"{owner}/{repo}",
-            "--add-reviewer", reviewer,
+            "pr",
+            "edit",
+            str(pr_number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--add-reviewer",
+            reviewer,
         )
 
     async def get_ci_status(self, owner: str, repo: str, pr_number: int | None) -> CIStatus:
@@ -202,9 +261,13 @@ class GitHubClient:
             return CIStatus.PENDING
 
         stdout = await self._gh(
-            "pr", "checks", str(pr_number),
-            "--repo", f"{owner}/{repo}",
-            "--json", "name,state,conclusion",
+            "pr",
+            "checks",
+            str(pr_number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--json",
+            "name,state,conclusion",
         )
         if not stdout:
             return CIStatus.PENDING
@@ -223,25 +286,24 @@ class GitHubClient:
 
         return CIStatus.PASSED
 
-    async def get_ci_failure_logs(
-        self, owner: str, repo: str, pr_number: int | None
-    ) -> str:
+    async def get_ci_failure_logs(self, owner: str, repo: str, pr_number: int | None) -> str:
         if pr_number is None:
             return "No PR number"
 
         stdout = await self._gh(
-            "pr", "checks", str(pr_number),
-            "--repo", f"{owner}/{repo}",
-            "--json", "name,state,conclusion,detailsUrl",
+            "pr",
+            "checks",
+            str(pr_number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--json",
+            "name,state,conclusion,detailsUrl",
         )
         if not stdout:
             return "Could not fetch checks"
 
         checks = json.loads(stdout)
-        failed = [
-            c for c in checks
-            if (c.get("conclusion") or "").upper() in ("FAILURE", "ERROR")
-        ]
+        failed = [c for c in checks if (c.get("conclusion") or "").upper() in ("FAILURE", "ERROR")]
 
         logs_parts = []
         for check in failed[:3]:
@@ -252,8 +314,11 @@ class GitHubClient:
             run_id_match = re.search(r"/actions/runs/(\d+)", details_url)
             if run_id_match:
                 run_stdout = await self._gh(
-                    "run", "view", run_id_match.group(1),
-                    "--repo", f"{owner}/{repo}",
+                    "run",
+                    "view",
+                    run_id_match.group(1),
+                    "--repo",
+                    f"{owner}/{repo}",
                     "--log-failed",
                 )
                 if run_stdout:
@@ -269,21 +334,26 @@ class GitHubClient:
         if pr_number is None:
             return ""
         stdout = await self._gh(
-            "pr", "diff", str(pr_number),
-            "--repo", f"{owner}/{repo}",
+            "pr",
+            "diff",
+            str(pr_number),
+            "--repo",
+            f"{owner}/{repo}",
         )
         return stdout or ""
 
-    async def get_review_status(
-        self, owner: str, repo: str, pr_number: int | None
-    ) -> ReviewStatus:
+    async def get_review_status(self, owner: str, repo: str, pr_number: int | None) -> ReviewStatus:
         if pr_number is None:
             return ReviewStatus.PENDING
 
         stdout = await self._gh(
-            "pr", "view", str(pr_number),
-            "--repo", f"{owner}/{repo}",
-            "--json", "reviews",
+            "pr",
+            "view",
+            str(pr_number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--json",
+            "reviews",
         )
         if not stdout:
             return ReviewStatus.PENDING
@@ -316,7 +386,8 @@ class GitHubClient:
             return []
 
         stdout = await self._gh(
-            "api", f"repos/{owner}/{repo}/pulls/{pr_number}/comments",
+            "api",
+            f"repos/{owner}/{repo}/pulls/{pr_number}/comments",
             "--paginate",
         )
         if not stdout:
@@ -335,14 +406,16 @@ class GitHubClient:
                 continue
             if c.get("id") in bot_replied_ids:
                 continue
-            result.append(ReviewComment(
-                id=c["id"],
-                author=c.get("user", {}).get("login", "unknown"),
-                body=c.get("body", ""),
-                path=c.get("path"),
-                line=c.get("line") or c.get("original_line"),
-                created_at=c.get("created_at"),
-            ))
+            result.append(
+                ReviewComment(
+                    id=c["id"],
+                    author=c.get("user", {}).get("login", "unknown"),
+                    body=c.get("body", ""),
+                    path=c.get("path"),
+                    line=c.get("line") or c.get("original_line"),
+                    created_at=c.get("created_at"),
+                )
+            )
 
         return result
 
@@ -350,10 +423,14 @@ class GitHubClient:
 
     async def create_project(self, owner: str, title: str) -> str:
         stdout = await self._gh(
-            "project", "create",
-            "--owner", owner,
-            "--title", title,
-            "--format", "json",
+            "project",
+            "create",
+            "--owner",
+            owner,
+            "--title",
+            title,
+            "--format",
+            "json",
         )
         if not stdout:
             raise RuntimeError(f"Failed to create project: {title}")
@@ -364,16 +441,24 @@ class GitHubClient:
 
     async def add_to_project(self, owner: str, project_number: str, issue_url: str) -> None:
         await self._gh(
-            "project", "item-add", project_number,
-            "--owner", owner,
-            "--url", issue_url,
+            "project",
+            "item-add",
+            project_number,
+            "--owner",
+            owner,
+            "--url",
+            issue_url,
         )
 
     async def list_project_items(self, owner: str, project_number: str) -> list[dict]:
         stdout = await self._gh(
-            "project", "item-list", project_number,
-            "--owner", owner,
-            "--format", "json",
+            "project",
+            "item-list",
+            project_number,
+            "--owner",
+            owner,
+            "--format",
+            "json",
         )
         if not stdout:
             return []
@@ -386,15 +471,21 @@ class GitHubClient:
         self, owner: str, repo: str, path: str, ref: str = "main"
     ) -> str | None:
         stdout = await self._gh(
-            "api", f"repos/{owner}/{repo}/contents/{path}",
-            "--jq", ".content",
-            "-H", "Accept: application/vnd.github.v3+json",
-            "--method", "GET",
-            "-f", f"ref={ref}",
+            "api",
+            f"repos/{owner}/{repo}/contents/{path}",
+            "--jq",
+            ".content",
+            "-H",
+            "Accept: application/vnd.github.v3+json",
+            "--method",
+            "GET",
+            "-f",
+            f"ref={ref}",
         )
         if not stdout:
             return None
         import base64
+
         try:
             return base64.b64decode(stdout.strip()).decode("utf-8")
         except Exception:
@@ -410,16 +501,21 @@ class GitHubClient:
 
     async def assign_issue(self, owner: str, repo: str, number: int, assignee: str) -> None:
         await self._gh(
-            "issue", "edit", str(number),
-            "--repo", f"{owner}/{repo}",
-            "--add-assignee", assignee,
+            "issue",
+            "edit",
+            str(number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--add-assignee",
+            assignee,
         )
 
     # -- Internal --
 
     async def _gh(self, *args: str) -> str:
         proc = await asyncio.create_subprocess_exec(
-            "gh", *args,
+            "gh",
+            *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

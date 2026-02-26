@@ -134,24 +134,36 @@ def setup_memory(region: str) -> None:
     stores = [
         (
             "ottonate_team_context",
-            [{"summaryMemoryStrategy": {
-                "name": "TeamKnowledge",
-                "namespaces": ["/ottonate/team/{sessionId}/"],
-            }}],
+            [
+                {
+                    "summaryMemoryStrategy": {
+                        "name": "TeamKnowledge",
+                        "namespaces": ["/ottonate/team/{sessionId}/"],
+                    }
+                }
+            ],
         ),
         (
             "ottonate_repo_context",
-            [{"summaryMemoryStrategy": {
-                "name": "RepoKnowledge",
-                "namespaces": ["/ottonate/repos/{actorId}/{sessionId}/"],
-            }}],
+            [
+                {
+                    "summaryMemoryStrategy": {
+                        "name": "RepoKnowledge",
+                        "namespaces": ["/ottonate/repos/{actorId}/{sessionId}/"],
+                    }
+                }
+            ],
         ),
         (
             "ottonate_issue_context",
-            [{"summaryMemoryStrategy": {
-                "name": "IssueKnowledge",
-                "namespaces": ["/ottonate/issues/{actorId}/{sessionId}/"],
-            }}],
+            [
+                {
+                    "summaryMemoryStrategy": {
+                        "name": "IssueKnowledge",
+                        "namespaces": ["/ottonate/issues/{actorId}/{sessionId}/"],
+                    }
+                }
+            ],
         ),
     ]
     env_keys = [
