@@ -11,7 +11,12 @@ from ottonate.scheduler import Scheduler
 
 @pytest.fixture
 def scheduler(config):
-    with patch("ottonate.scheduler.GitHubClient") as mock_gh_cls:
+    with (
+        patch("ottonate.scheduler.GitHubClient") as mock_gh_cls,
+        patch("ottonate.scheduler.MetricsStore") as mock_metrics_cls,
+    ):
+        mock_metrics_cls.return_value = MagicMock()
+        mock_metrics_cls.return_value.init_db = AsyncMock()
         s = Scheduler(config)
         s.github = mock_gh_cls.return_value
         s.pipeline = MagicMock()

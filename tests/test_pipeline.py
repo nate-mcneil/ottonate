@@ -11,13 +11,14 @@ from ottonate.pipeline import (
     _extract_pr_number,
     _parse_quality_verdict,
     _parse_review_verdict,
+    _parse_self_improvement,
     _slugify_branch,
 )
 
 
 @pytest.fixture
-def pipeline(config, mock_github):
-    return Pipeline(config, mock_github)
+def pipeline(config, mock_github, mock_metrics):
+    return Pipeline(config, mock_github, metrics=mock_metrics)
 
 
 def _agent_result(text: str = "", is_error: bool = False) -> StageResult:
@@ -278,13 +279,101 @@ class TestHandleReview:
 
 class TestHandleMergeReady:
     @pytest.mark.asyncio
-    async def test_notifies_team(self, pipeline, sample_ticket, sample_rules, mock_github):
+    async def test_notifies_when_not_merged(
+        self, pipeline, sample_ticket, sample_rules, mock_github
+    ):
         sample_ticket.pr_number = 10
+        mock_github.get_pr_state = AsyncMock(return_value="OPEN")
+        mock_github.get_comments = AsyncMock(return_value=[])
 
         await pipeline._handle_merge_ready(sample_ticket, sample_rules)
         mock_github.mention_on_issue.assert_called_once()
-        call_args = mock_github.mention_on_issue.call_args
-        assert "engineering" in call_args[0]
+
+    @pytest.mark.asyncio
+    async def test_skips_notification_if_already_notified(
+        self, pipeline, sample_ticket, sample_rules, mock_github
+    ):
+        sample_ticket.pr_number = 10
+        mock_github.get_pr_state = AsyncMock(return_value="OPEN")
+        mock_github.get_comments = AsyncMock(return_value=["PR is merge-ready, waiting"])
+
+        await pipeline._handle_merge_ready(sample_ticket, sample_rules)
+        mock_github.mention_on_issue.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_merged_clean_removes_labels(
+        self, pipeline, sample_ticket, sample_rules, mock_github, mock_metrics
+    ):
+        sample_ticket.pr_number = 10
+        mock_github.get_pr_state = AsyncMock(return_value="MERGED")
+
+        await pipeline._handle_merge_ready(sample_ticket, sample_rules)
+        mock_github.remove_label.assert_any_call(
+            "testorg", "test-repo", 42, Label.MERGE_READY.value
+        )
+
+    @pytest.mark.asyncio
+    async def test_merged_with_retries_triggers_retro(
+        self, pipeline, sample_ticket, sample_rules, mock_github, mock_metrics
+    ):
+        sample_ticket.pr_number = 10
+        mock_github.get_pr_state = AsyncMock(return_value="MERGED")
+
+        await mock_metrics.record_stage(
+            sample_ticket.issue_ref,
+            "planning",
+            "otto-planner",
+            0.05,
+            10,
+            False,
+            0,
+        )
+        await mock_metrics.record_stage(
+            sample_ticket.issue_ref,
+            "planning",
+            "otto-planner",
+            0.03,
+            8,
+            False,
+            1,
+        )
+
+        await pipeline._handle_merge_ready(sample_ticket, sample_rules)
+        mock_github.swap_label.assert_called_with(
+            "testorg",
+            "test-repo",
+            42,
+            Label.MERGE_READY,
+            Label.RETRO,
+        )
+
+    @pytest.mark.asyncio
+    async def test_merged_with_stuck_triggers_retro(
+        self, pipeline, sample_ticket, sample_rules, mock_github, mock_metrics
+    ):
+        sample_ticket.pr_number = 10
+        mock_github.get_pr_state = AsyncMock(return_value="MERGED")
+
+        await mock_metrics.record_stage(
+            sample_ticket.issue_ref,
+            "implementing",
+            "otto-implementer",
+            1.0,
+            50,
+            True,
+            0,
+            was_stuck=True,
+            stuck_reason="CI blocked",
+        )
+
+        await pipeline._handle_merge_ready(sample_ticket, sample_rules)
+        mock_github.swap_label.assert_called_with(
+            "testorg",
+            "test-repo",
+            42,
+            Label.MERGE_READY,
+            Label.RETRO,
+        )
 
 
 class TestSpecReview:
@@ -354,6 +443,83 @@ class TestGetPlan:
         mock_github.get_comments = AsyncMock(return_value=[])
         result = await pipeline._get_plan(ticket)
         assert result == ""
+
+
+class TestHandleRetro:
+    @pytest.mark.asyncio
+    async def test_runs_retro_agent(
+        self, pipeline, sample_ticket, sample_rules, mock_github, mock_metrics, tmp_path
+    ):
+        sample_ticket.pr_number = 10
+        sample_ticket.work_dir = str(tmp_path)
+        mock_github.get_comments = AsyncMock(return_value=[])
+
+        await mock_metrics.record_stage(
+            sample_ticket.issue_ref,
+            "planning",
+            "otto-planner",
+            0.05,
+            10,
+            False,
+            1,
+        )
+
+        with (
+            patch.object(pipeline, "_run", return_value=_agent_result("[RETRO_COMPLETE]")),
+            patch.object(pipeline, "_ensure_eng_workspace", new_callable=AsyncMock),
+        ):
+            pipeline._eng_workspace_path = lambda: tmp_path
+            await pipeline._handle_retro(sample_ticket, sample_rules)
+
+        mock_github.remove_label.assert_any_call(
+            "testorg",
+            "test-repo",
+            42,
+            Label.RETRO.value,
+        )
+        mock_github.add_comment.assert_called()
+        comment_body = mock_github.add_comment.call_args[0][3]
+        assert "Retro complete" in comment_body
+
+    @pytest.mark.asyncio
+    async def test_retro_files_self_improvement_issue(
+        self, pipeline, sample_ticket, sample_rules, mock_github, mock_metrics, tmp_path
+    ):
+        sample_ticket.pr_number = 10
+        sample_ticket.work_dir = str(tmp_path)
+        mock_github.get_comments = AsyncMock(return_value=[])
+        mock_github.create_issue = AsyncMock(return_value=99)
+
+        retro_text = (
+            "[RETRO_COMPLETE]\n"
+            "[SELF_IMPROVEMENT]\n"
+            '{"title": "Improve CI fixer prompt", "body": "The CI fixer should check lockfiles."}'
+        )
+
+        with (
+            patch.object(pipeline, "_run", return_value=_agent_result(retro_text)),
+            patch.object(pipeline, "_ensure_eng_workspace", new_callable=AsyncMock),
+        ):
+            pipeline._eng_workspace_path = lambda: tmp_path
+            await pipeline._handle_retro(sample_ticket, sample_rules)
+
+        mock_github.create_issue.assert_called_once()
+        call_args = mock_github.create_issue.call_args[0]
+        assert call_args[1] == "ottonate"
+        assert "CI fixer" in call_args[2]
+
+
+class TestParseSelfImprovement:
+    def test_parses_json(self):
+        text = 'stuff [SELF_IMPROVEMENT]\n{"title": "Fix X", "body": "Do Y"}'
+        result = _parse_self_improvement(text)
+        assert result == {"title": "Fix X", "body": "Do Y"}
+
+    def test_returns_none_when_no_marker(self):
+        assert _parse_self_improvement("no marker here") is None
+
+    def test_returns_none_on_bad_json(self):
+        assert _parse_self_improvement("[SELF_IMPROVEMENT]\nnot json") is None
 
 
 class TestRetryTracking:

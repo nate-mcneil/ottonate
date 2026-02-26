@@ -6,6 +6,7 @@ import pytest
 
 from ottonate.config import OttonateConfig
 from ottonate.integrations.github import GitHubClient
+from ottonate.metrics import MetricsStore
 from ottonate.models import Ticket
 from ottonate.rules import ResolvedRules
 
@@ -35,6 +36,13 @@ def mock_github() -> AsyncMock:
     gh.get_file_content = AsyncMock(return_value=None)
     gh.get_pr_state = AsyncMock(return_value="OPEN")
     return gh
+
+
+@pytest.fixture
+async def mock_metrics(tmp_path) -> MetricsStore:
+    store = MetricsStore(tmp_path / "test.db")
+    await store.init_db()
+    return store
 
 
 @pytest.fixture
