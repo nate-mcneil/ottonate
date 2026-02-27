@@ -185,6 +185,19 @@ class TestGetFileContent:
         assert result is None
 
 
+class TestGetDefaultBranch:
+    @pytest.mark.asyncio
+    async def test_returns_branch_name(self, github):
+        data = {"defaultBranchRef": {"name": "master"}}
+        with patch("asyncio.create_subprocess_exec", return_value=_gh_result(json.dumps(data))):
+            assert await github.get_default_branch("o", "r") == "master"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_main(self, github):
+        with patch("asyncio.create_subprocess_exec", return_value=_gh_result("", returncode=1)):
+            assert await github.get_default_branch("o", "r") == "main"
+
+
 class TestGetPrState:
     @pytest.mark.asyncio
     async def test_merged(self, github):

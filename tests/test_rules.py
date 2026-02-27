@@ -146,6 +146,30 @@ class TestLoadRules:
         assert call_count == 4
 
     @pytest.mark.asyncio
+    async def test_target_repo_uses_own_default_branch(self, config, mock_github):
+        config.github_engineering_branch = "develop"
+        mock_github.get_file_content = AsyncMock(return_value=None)
+        mock_github.get_default_branch = AsyncMock(return_value="master")
+
+        await load_rules("testorg", "my-repo", config, mock_github)
+
+        refs_used = [call.args[3] for call in mock_github.get_file_content.call_args_list]
+        eng_refs = [
+            r
+            for call, r in zip(mock_github.get_file_content.call_args_list, refs_used)
+            if call.args[1] == "engineering"
+        ]
+        repo_refs = [
+            r
+            for call, r in zip(mock_github.get_file_content.call_args_list, refs_used)
+            if call.args[1] == "my-repo"
+        ]
+
+        assert all(r == "develop" for r in eng_refs)
+        assert all(r == "master" for r in repo_refs)
+        mock_github.get_default_branch.assert_called_once_with("testorg", "my-repo")
+
+    @pytest.mark.asyncio
     async def test_architecture_context_loaded(self, config, mock_github):
         async def _mock_content(owner, repo, path, ref="main"):
             if path == "architecture/overview.md":

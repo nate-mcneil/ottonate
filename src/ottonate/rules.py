@@ -55,18 +55,19 @@ async def load_rules(
     """Load and merge rules from all three layers."""
     merged_config = dict(DEFAULT_CONFIG)
     org_rules_md = DEFAULT_RULES
-    ref = config.github_default_branch
+    eng_ref = config.github_engineering_branch
 
     eng_repo = config.github_engineering_repo
-    org_config, org_rules_md = await _load_layer(owner, eng_repo, github, ref)
+    org_config, org_rules_md = await _load_layer(owner, eng_repo, github, eng_ref)
     merged_config = _merge_config(merged_config, org_config)
 
-    arch_context = await _load_org_context(owner, eng_repo, github, ref)
+    arch_context = await _load_org_context(owner, eng_repo, github, eng_ref)
 
     repo_config: dict = {}
     repo_rules_md = ""
     if repo != eng_repo:
-        repo_config, repo_rules_md = await _load_layer(owner, repo, github, ref)
+        repo_ref = await github.get_default_branch(owner, repo)
+        repo_config, repo_rules_md = await _load_layer(owner, repo, github, repo_ref)
         merged_config = _merge_config(merged_config, repo_config)
 
     agent_context = _merge_agent_context(org_rules_md, repo_rules_md, arch_context)
