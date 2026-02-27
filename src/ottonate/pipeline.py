@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -190,6 +191,26 @@ async def run_agent(
     )
 
 
+async def _git_branch_commit_push(cwd: str, branch: str, message: str) -> None:
+    """Create a branch, stage all changes, commit, and push."""
+    for cmd in [
+        ["git", "checkout", "-b", branch],
+        ["git", "add", "-A"],
+        ["git", "commit", "-m", message],
+        ["git", "push", "-u", "origin", branch],
+    ]:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            log.error("git_command_failed", cmd=cmd, stderr=stderr.decode())
+            raise RuntimeError(f"git command failed: {' '.join(cmd)}")
+
+
 # -- Pipeline --
 
 
@@ -327,12 +348,30 @@ class Pipeline:
             await self._stuck(ticket, rules, "Spec agent produced no output")
             return
 
+        if spec_file and spec_file.exists():
+            spec_dir = Path(ticket.work_dir) / "specs" / str(ticket.issue_number)
+            spec_dir.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(spec_file), str(spec_dir / "SPEC.md"))
+
+        branch = f"{ticket.issue_number}/spec"
+        commit_msg = f"#{ticket.issue_number} - Add spec for {ticket.summary}"
+        await _git_branch_commit_push(ticket.work_dir, branch, commit_msg)
+
+        pr_number = await self.github.create_pr(
+            ticket.owner,
+            ticket.repo,
+            branch,
+            f"#{ticket.issue_number} - Spec: {ticket.summary}",
+            f"Generated spec for issue #{ticket.issue_number}.\n\nCloses #{ticket.issue_number}",
+        )
+
         await self.github.add_comment(
             ticket.owner,
             ticket.repo,
             ticket.issue_number,
-            "Spec PR: opened in engineering repo",
+            f"Spec PR: #{pr_number}",
         )
+        ticket.spec_pr_number = pr_number
 
         self.trace.add_artifact(
             Artifact(
@@ -395,13 +434,9 @@ class Pipeline:
         spec_text = await self.github.get_file_content(
             ticket.owner,
             ticket.repo,
-            f"specs/{ticket.issue_number}-*/SPEC.md",
+            f"specs/{ticket.issue_number}/SPEC.md",
             self.config.github_default_branch,
         )
-        if not spec_text:
-            spec_file = Path(ticket.work_dir) / "SPEC.md" if ticket.work_dir else None
-            spec_text = spec_file.read_text().strip() if spec_file and spec_file.exists() else ""
-
         if not spec_text:
             await self._stuck(ticket, rules, "Could not find approved spec content")
             return
@@ -482,6 +517,16 @@ class Pipeline:
         if not stories_data:
             log.warning("no_backlog_json", issue=ticket.issue_ref)
             return []
+
+        if not ticket.project_id:
+            try:
+                ticket.project_id = await self.github.create_project(ticket.owner, ticket.summary)
+                initiative_url = (
+                    f"https://github.com/{ticket.owner}/{ticket.repo}/issues/{ticket.issue_number}"
+                )
+                await self.github.add_to_project(ticket.owner, ticket.project_id, initiative_url)
+            except Exception:
+                log.exception("project_creation_failed", issue=ticket.issue_ref)
 
         created_refs: list[str] = []
 

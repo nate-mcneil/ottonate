@@ -118,21 +118,60 @@ class TestHandleNew:
 
 class TestHandleSpec:
     @pytest.mark.asyncio
-    async def test_spec_opens_pr_comment(
+    async def test_spec_creates_pr_and_posts_number(
         self, pipeline, sample_ticket, sample_rules, mock_github, tmp_path
     ):
         sample_ticket.work_dir = str(tmp_path)
         sample_ticket.repo = "engineering"
         mock_github.get_comments = AsyncMock(return_value=[])
+        mock_github.create_pr = AsyncMock(return_value=10)
 
-        with patch.object(pipeline, "_run", return_value=_agent_result("The spec content")):
+        spec_file = tmp_path / "SPEC.md"
+
+        def write_spec(*args, **kwargs):
+            spec_file.write_text("# The Spec")
+            return _agent_result("[SPEC_COMPLETE]")
+
+        with (
+            patch.object(pipeline, "_run", side_effect=write_spec),
+            patch("ottonate.pipeline._git_branch_commit_push", new_callable=AsyncMock) as mock_git,
+        ):
             await pipeline._handle_spec(sample_ticket, sample_rules)
 
         mock_github.add_label.assert_any_call("testorg", "engineering", 42, Label.SPEC.value)
-        mock_github.add_comment.assert_called()
+        mock_git.assert_called_once()
+        mock_github.create_pr.assert_called_once()
+        comment_body = mock_github.add_comment.call_args[0][3]
+        assert "Spec PR: #10" in comment_body
         mock_github.swap_label.assert_called_with(
             "testorg", "engineering", 42, Label.SPEC, Label.SPEC_REVIEW
         )
+
+    @pytest.mark.asyncio
+    async def test_spec_moves_file_to_specs_dir(
+        self, pipeline, sample_ticket, sample_rules, mock_github, tmp_path
+    ):
+        sample_ticket.work_dir = str(tmp_path)
+        sample_ticket.repo = "engineering"
+        mock_github.get_comments = AsyncMock(return_value=[])
+        mock_github.create_pr = AsyncMock(return_value=10)
+
+        spec_file = tmp_path / "SPEC.md"
+
+        def write_spec(*args, **kwargs):
+            spec_file.write_text("# The Spec")
+            return _agent_result("[SPEC_COMPLETE]")
+
+        with (
+            patch.object(pipeline, "_run", side_effect=write_spec),
+            patch("ottonate.pipeline._git_branch_commit_push", new_callable=AsyncMock),
+        ):
+            await pipeline._handle_spec(sample_ticket, sample_rules)
+
+        expected_dir = tmp_path / "specs" / "42"
+        assert (expected_dir / "SPEC.md").exists()
+        assert (expected_dir / "SPEC.md").read_text() == "# The Spec"
+        assert not spec_file.exists()
 
     @pytest.mark.asyncio
     async def test_spec_skips_if_pr_comment_exists(
@@ -398,6 +437,79 @@ class TestSpecReview:
 
         await pipeline._handle_spec_review(sample_ticket, sample_rules)
         mock_github.add_comment.assert_called()
+
+
+class TestHandleSpecApproved:
+    @pytest.mark.asyncio
+    async def test_missing_spec_in_repo_triggers_stuck(
+        self, pipeline, sample_ticket, sample_rules, mock_github, tmp_path
+    ):
+        sample_ticket.work_dir = str(tmp_path)
+        sample_ticket.repo = "engineering"
+        mock_github.get_comments = AsyncMock(return_value=[])
+        mock_github.get_file_content = AsyncMock(return_value=None)
+
+        (tmp_path / "SPEC.md").write_text("local fallback should be ignored")
+
+        with patch.object(pipeline, "_run") as mock_run:
+            await pipeline._handle_spec_approved(sample_ticket, sample_rules)
+            mock_run.assert_not_called()
+
+        mock_github.add_comment.assert_called()
+        stuck_comment = mock_github.add_comment.call_args[0][3]
+        assert "spec" in stuck_comment.lower()
+
+    @pytest.mark.asyncio
+    async def test_spec_found_in_repo_runs_backlog(
+        self, pipeline, sample_ticket, sample_rules, mock_github, tmp_path
+    ):
+        sample_ticket.work_dir = str(tmp_path)
+        sample_ticket.repo = "engineering"
+        mock_github.get_comments = AsyncMock(return_value=[])
+        mock_github.get_file_content = AsyncMock(return_value="# Spec Content")
+
+        with patch.object(pipeline, "_run", return_value=_agent_result("[BACKLOG_COMPLETE]")):
+            await pipeline._handle_spec_approved(sample_ticket, sample_rules)
+
+        mock_github.swap_label.assert_any_call(
+            "testorg", "engineering", 42, Label.BACKLOG_GEN, Label.BACKLOG_REVIEW
+        )
+
+
+class TestCreateStoriesFromBacklog:
+    @pytest.mark.asyncio
+    async def test_creates_project_and_adds_stories(
+        self, pipeline, sample_ticket, sample_rules, mock_github
+    ):
+        sample_ticket.repo = "engineering"
+        backlog_json = (
+            "## Generated Backlog\n\n```json\n"
+            '[{"title": "Story A", "repo": "target-repo", "description": "Do A", '
+            '"estimate": "S", "dependencies": [], "notes": ""}]\n```'
+        )
+        mock_github.get_comments = AsyncMock(return_value=[backlog_json])
+        mock_github.create_issue = AsyncMock(return_value=99)
+        mock_github.create_project = AsyncMock(return_value="7")
+        mock_github.add_to_project = AsyncMock()
+
+        with patch.object(pipeline, "_enrich_story", return_value=None):
+            refs = await pipeline._create_stories_from_backlog(sample_ticket, sample_rules)
+
+        assert len(refs) == 1
+        mock_github.create_project.assert_called_once_with("testorg", "Test issue")
+        assert sample_ticket.project_id == "7"
+        add_calls = mock_github.add_to_project.call_args_list
+        assert len(add_calls) == 2
+        assert add_calls[0].args == (
+            "testorg",
+            "7",
+            "https://github.com/testorg/engineering/issues/42",
+        )
+        assert add_calls[1].args == (
+            "testorg",
+            "7",
+            "https://github.com/testorg/target-repo/issues/99",
+        )
 
 
 class TestGetPlan:
