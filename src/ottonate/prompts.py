@@ -33,17 +33,28 @@ def backlog_prompt(ticket: Ticket, spec_body: str, *, rules_context: str = "") -
 ### Approved Specification
 {spec_body}
 {rules}
-Break this specification into implementation stories. For each story produce:
-- Title
-- Target repository (from the repo catalog above)
-- Description with acceptance criteria
-- Estimation (S/M/L)
-- Dependencies on other stories
-- Technical notes
+Break this specification into small, atomic implementation stories (GitHub issues).
 
-Output as a JSON array of story objects with keys: title, repo, description, estimate, \
-dependencies, notes.
-End with [BACKLOG_COMPLETE] when done.
+CRITICAL: Your output must be ONLY a JSON array. Do NOT write files. Do NOT produce markdown.
+Do NOT produce a development plan. Output raw JSON to stdout and nothing else.
+
+Each story object must have these keys:
+- "title": Short issue title
+- "repo": Target GitHub repository name (e.g. "flow-tickets-delivery")
+- "description": Issue body with acceptance criteria
+- "estimate": "S", "M", or "L"
+- "dependencies": Array of story titles this depends on (empty array if none)
+- "notes": Technical implementation notes
+
+Example format:
+```json
+[
+  {{"title": "Migrate Avatar component to FDSE", "repo": "flow-tickets-delivery", \
+"description": "...", "estimate": "M", "dependencies": [], "notes": "..."}}
+]
+```
+
+End your response with [BACKLOG_COMPLETE] after the JSON array.
 """
 
 
