@@ -490,6 +490,26 @@ class GitHubClient:
         except Exception:
             return stdout
 
+    async def merge_pr(self, owner: str, repo: str, pr_number: int) -> None:
+        proc = await asyncio.create_subprocess_exec(
+            "gh",
+            "pr",
+            "merge",
+            str(pr_number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--squash",
+            "--delete-branch",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"Failed to merge PR #{pr_number} in {owner}/{repo}: {stderr.decode()}"
+            )
+        log.info("pr_merged", repo=f"{owner}/{repo}", pr=pr_number)
+
     # -- Notification helpers --
 
     async def mention_on_issue(
