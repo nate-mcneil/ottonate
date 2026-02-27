@@ -62,7 +62,11 @@ class Scheduler:
         )
         rules = await load_rules(owner, repo, self.config, self.github)
         await self._ensure_workspace(ticket)
-        await self.pipeline.handle(ticket, rules)
+
+        if ticket.agent_label is None:
+            await self.pipeline.handle_new(ticket, rules)
+        else:
+            await self.pipeline.handle(ticket, rules)
 
     # -- Main loop --
 

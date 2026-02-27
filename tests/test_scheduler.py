@@ -39,6 +39,20 @@ class TestProcessSingle:
 
         scheduler.pipeline.handle.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_dispatches_new_issue_to_handle_new(self, scheduler):
+        scheduler.github.get_issue_labels = AsyncMock(return_value=["otto"])
+        scheduler.github.get_issue = AsyncMock(return_value={"title": "New issue"})
+
+        with (
+            patch.object(scheduler, "_ensure_workspace", new_callable=AsyncMock),
+            patch("ottonate.scheduler.load_rules", new_callable=AsyncMock),
+        ):
+            await scheduler.process_single("testorg", "test-repo", 99)
+
+        scheduler.pipeline.handle_new.assert_called_once()
+        scheduler.pipeline.handle.assert_not_called()
+
 
 class TestPollAndDispatch:
     @pytest.mark.asyncio
