@@ -1,0 +1,19 @@
+body {
+  background-color: var(--bgColor-default, var(--color-canvas-default));
+}
+
+.Box-row:hover {
+  background-color: var(--bgColor-muted, var(--color-canvas-subtle));
+}
+
+table {
+  border-collapse: collapse;
+}
+
+table tbody tr {
+  border-top: 1px solid var(--borderColor-default, var(--color-border-default));
+}
+
+table tbody tr:hover {
+  background-color: var(--bgColor-muted, var(--color-canvas-subtle));
+}
