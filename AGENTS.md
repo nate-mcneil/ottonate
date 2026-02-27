@@ -12,6 +12,7 @@ pip install -e ".[dev]"
 pytest tests/ -v
 ottonate run                         # Start the scheduler daemon
 ottonate process owner/repo#42       # Process a single issue
+ottonate dashboard                   # Start the dashboard web UI (localhost:8080)
 ottonate sync-agents                 # Sync agent definitions to ~/.claude/agents/
 ottonate init-engineering            # Bootstrap the engineering repo
 ottonate rules-check owner/repo      # Debug merged rules for a repo
@@ -51,7 +52,7 @@ ottonate/
     otto-spec-agent.md
     otto-retro.md
   src/ottonate/
-    cli.py                   # Click CLI: run, process, sync-agents, init-engineering, rules-check
+    cli.py                   # Click CLI: run, process, dashboard, sync-agents, etc.
     config.py                # Pydantic settings (env prefix: OTTONATE_)
     models.py                # Label enum, Ticket, StageResult, CIStatus, ReviewStatus
     pipeline.py              # Stage handlers and agent invocation
@@ -64,6 +65,12 @@ ottonate/
     metrics.py               # Stage metrics persistence (SQLite)
     init_engineering.py      # Engineering repo bootstrap (scaffold + org scan)
     github.py                # GitHub via gh CLI (issue CRUD, PRs, labels, projects)
+    dashboard/               # Local web dashboard (FastAPI + HTMX + Primer CSS)
+      app.py                 # FastAPI app factory
+      api.py                 # JSON API endpoints
+      views.py               # HTML page routes
+      templates/             # Jinja2 templates (base, pipeline, attention, metrics)
+      static/                # CSS overrides
   tests/
     conftest.py              # Shared fixtures (config, mocks, sample_ticket)
     test_models.py
@@ -75,6 +82,7 @@ ottonate/
     test_metrics.py
     test_init_engineering.py
     test_github.py
+    test_dashboard.py
   PIPELINE.md                # Full pipeline flow documentation
   pyproject.toml
 ```
@@ -134,6 +142,22 @@ use PR merge as the approval signal. No polling for magic comment strings.
 Agent `.md` files live in `agents/` and are synced to `~/.claude/agents/` on
 `run`, `process`, and `sync-agents`. They use YAML frontmatter for
 configuration (model, maxTurns) and markdown for the system prompt.
+
+### Dashboard
+
+`ottonate dashboard` starts a local web UI (FastAPI + HTMX + Primer CSS) on
+`127.0.0.1:8080`. Three views:
+
+- **Pipeline Board** (`/`) -- kanban board grouping issues into Planning,
+  Implementing, Awaiting Human, and Stuck columns.
+- **Attention Queue** (`/attention`) -- prioritized list of items needing human
+  action (stuck, needs merge, needs review, needs approval) with inline action
+  buttons.
+- **Metrics** (`/metrics`) -- aggregate stats from the SQLite metrics DB
+  (throughput, cost, reliability by stage, recent completions).
+
+All issue/PR detail links open GitHub in a new tab. The dashboard auto-refreshes
+via HTMX polling every 10 seconds.
 
 ### Configuration
 

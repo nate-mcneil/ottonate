@@ -197,3 +197,22 @@ class TestGetPrState:
         data = {"state": "OPEN"}
         with patch("asyncio.create_subprocess_exec", return_value=_gh_result(json.dumps(data))):
             assert await github.get_pr_state("o", "r", 1) == "OPEN"
+
+
+class TestMergePr:
+    @pytest.mark.asyncio
+    async def test_merge_calls_gh(self, github):
+        with patch("asyncio.create_subprocess_exec", return_value=_gh_result("")) as mock_exec:
+            await github.merge_pr("org", "repo", 42)
+        mock_exec.assert_called_once()
+        args = mock_exec.call_args[0]
+        assert "pr" in args
+        assert "merge" in args
+        assert "42" in args
+        assert "org/repo" in args
+
+    @pytest.mark.asyncio
+    async def test_merge_raises_on_failure(self, github):
+        with patch("asyncio.create_subprocess_exec", return_value=_gh_result("", returncode=1)):
+            with pytest.raises(RuntimeError, match="Failed to merge"):
+                await github.merge_pr("org", "repo", 42)
