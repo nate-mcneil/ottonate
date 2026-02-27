@@ -95,6 +95,20 @@ def init_engineering_cmd() -> None:
     click.echo(f"PR created: {pr_url}")
 
 
+@main.command()
+@click.option("--port", default=8080, help="Port to bind the dashboard server to.")
+def dashboard(port: int) -> None:
+    """Start the ottonate dashboard web UI."""
+    import uvicorn
+
+    from ottonate.dashboard.app import create_app
+
+    config = _get_config()
+    app = create_app(config)
+    click.echo(f"Starting dashboard at http://127.0.0.1:{port}")
+    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+
+
 @main.command("rules-check")
 @click.argument("repo_ref")
 def rules_check(repo_ref: str) -> None:
