@@ -418,6 +418,21 @@ class GitHubClient:
 
         return result
 
+    async def get_default_branch(self, owner: str, repo: str) -> str:
+        stdout = await self._gh(
+            "repo",
+            "view",
+            f"{owner}/{repo}",
+            "--json",
+            "defaultBranchRef",
+        )
+        if stdout:
+            data = json.loads(stdout)
+            branch = (data.get("defaultBranchRef") or {}).get("name")
+            if branch:
+                return branch
+        return "main"
+
     # -- Project operations --
 
     async def create_project(self, owner: str, title: str) -> str:

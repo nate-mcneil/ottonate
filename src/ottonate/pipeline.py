@@ -435,7 +435,7 @@ class Pipeline:
             ticket.owner,
             ticket.repo,
             f"specs/{ticket.issue_number}/SPEC.md",
-            self.config.github_default_branch,
+            self.config.github_engineering_branch,
         )
         if not spec_text:
             await self._stuck(ticket, rules, "Could not find approved spec content")

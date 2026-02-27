@@ -13,7 +13,7 @@ class OttonateConfig(BaseSettings):
     # GitHub
     github_org: str = ""
     github_engineering_repo: str = "engineering"
-    github_default_branch: str = "main"
+    github_engineering_branch: str = "main"
     github_username: str = ""
     github_agent_label: str = "otto"
     github_notify_team: str = ""
