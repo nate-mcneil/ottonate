@@ -267,7 +267,7 @@ class GitHubClient:
             "--repo",
             f"{owner}/{repo}",
             "--json",
-            "name,state,conclusion",
+            "name,state",
         )
         if not stdout:
             return CIStatus.PENDING
@@ -278,10 +278,9 @@ class GitHubClient:
 
         for check in checks:
             state = check.get("state", "").upper()
-            conclusion = (check.get("conclusion") or "").upper()
             if state in ("PENDING", "QUEUED", "IN_PROGRESS"):
                 return CIStatus.PENDING
-            if conclusion in ("FAILURE", "ERROR", "TIMED_OUT"):
+            if state in ("FAILURE", "ERROR", "TIMED_OUT"):
                 return CIStatus.FAILED
 
         return CIStatus.PASSED
@@ -297,20 +296,20 @@ class GitHubClient:
             "--repo",
             f"{owner}/{repo}",
             "--json",
-            "name,state,conclusion,detailsUrl",
+            "name,state,link",
         )
         if not stdout:
             return "Could not fetch checks"
 
         checks = json.loads(stdout)
-        failed = [c for c in checks if (c.get("conclusion") or "").upper() in ("FAILURE", "ERROR")]
+        failed = [c for c in checks if c.get("state", "").upper() in ("FAILURE", "ERROR")]
 
         logs_parts = []
         for check in failed[:3]:
             name = check.get("name", "unknown")
             logs_parts.append(f"## Failed check: {name}")
 
-            details_url = check.get("detailsUrl", "")
+            details_url = check.get("link", "")
             run_id_match = re.search(r"/actions/runs/(\d+)", details_url)
             if run_id_match:
                 run_stdout = await self._gh(

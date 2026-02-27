@@ -97,19 +97,25 @@ class TestFindPr:
 class TestGetCiStatus:
     @pytest.mark.asyncio
     async def test_all_passed(self, github):
-        checks = [{"name": "build", "state": "COMPLETED", "conclusion": "SUCCESS"}]
+        checks = [{"name": "build", "state": "SUCCESS"}]
         with patch("asyncio.create_subprocess_exec", return_value=_gh_result(json.dumps(checks))):
             assert await github.get_ci_status("o", "r", 1) == CIStatus.PASSED
 
     @pytest.mark.asyncio
     async def test_failure(self, github):
-        checks = [{"name": "build", "state": "COMPLETED", "conclusion": "FAILURE"}]
+        checks = [{"name": "build", "state": "FAILURE"}]
+        with patch("asyncio.create_subprocess_exec", return_value=_gh_result(json.dumps(checks))):
+            assert await github.get_ci_status("o", "r", 1) == CIStatus.FAILED
+
+    @pytest.mark.asyncio
+    async def test_error_state(self, github):
+        checks = [{"name": "build", "state": "ERROR"}]
         with patch("asyncio.create_subprocess_exec", return_value=_gh_result(json.dumps(checks))):
             assert await github.get_ci_status("o", "r", 1) == CIStatus.FAILED
 
     @pytest.mark.asyncio
     async def test_pending(self, github):
-        checks = [{"name": "build", "state": "PENDING", "conclusion": None}]
+        checks = [{"name": "build", "state": "PENDING"}]
         with patch("asyncio.create_subprocess_exec", return_value=_gh_result(json.dumps(checks))):
             assert await github.get_ci_status("o", "r", 1) == CIStatus.PENDING
 
@@ -124,9 +130,8 @@ class TestGetCiFailureLogs:
         checks = [
             {
                 "name": "build",
-                "state": "COMPLETED",
-                "conclusion": "FAILURE",
-                "detailsUrl": "https://github.com/o/r/actions/runs/12345/job/678",
+                "state": "FAILURE",
+                "link": "https://github.com/o/r/actions/runs/12345/job/678",
             }
         ]
         call_count = 0
