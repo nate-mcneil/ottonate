@@ -178,8 +178,8 @@ class TestInitEmptyRepo:
             result = await init_empty_repo("org", "eng")
 
         assert result is True
-        # 3 init commands (git init, config email, config name) + 5 commit/push commands = 8
-        assert len(calls) == 8
+        # 4 init commands (git init, config email, config name, credential helper) + 5 commit/push = 9
+        assert len(calls) == 9
         # Verify key git commands were called
         flat_args = [" ".join(c) for c in calls]
         assert any("git init" in a for a in flat_args)
@@ -195,8 +195,8 @@ class TestInitEmptyRepo:
         async def mock_exec(*args, **kwargs):
             nonlocal call_count
             call_count += 1
-            # Fail on the 4th call (git add -A, which is the first post-init command)
-            if call_count == 4:
+            # Fail on the 5th call (git add -A, which is the first post-init command)
+            if call_count == 5:
                 return _gh_result("", returncode=1)
             return _gh_result("")
 
