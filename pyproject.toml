@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Automated GitHub issue-to-PR pipeline using Claude agents"
 requires-python = ">=3.11"
 dependencies = [
-    "claude-agent-sdk>=0.1.39",
+    "claude-agent-sdk>=0.1.44",
     "click>=8.0",
     "pydantic-settings>=2.0",
     "structlog>=24.0",
