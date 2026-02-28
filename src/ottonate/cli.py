@@ -130,11 +130,7 @@ def process_idea(pr_ref: str) -> None:
 
         click.echo(f"Processing idea PR: {idea_pr.pr_ref} (project: {project_name})")
 
-        from ottonate.metrics import MetricsStore
-
-        metrics = MetricsStore(config.resolved_db_path())
-        await metrics.init_db()
-        pipeline = Pipeline(config, github, metrics=metrics)
+        pipeline = Pipeline(config, github)
         rules = await load_rules(owner, repo, config, github)
         await pipeline.handle_idea_pr(idea_pr, rules)
         click.echo("Done.")

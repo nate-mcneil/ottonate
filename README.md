@@ -2,18 +2,21 @@
 
 **Label a GitHub issue. Get a reviewed, CI-green PR.**
 
-Ottonate is an autonomous dev pipeline that turns GitHub issues into merged pull requests. Nine Claude agents handle planning, implementation, CI fixes, code review, and post-merge retrospectives. Humans stay in control at four explicit gates: spec review, backlog review, code review, and merge.
+Ottonate is an autonomous dev pipeline that turns GitHub issues into merged pull requests, with an ideas pipeline that lets anyone contribute raw product ideas. Nine Claude agents handle planning, implementation, CI fixes, code review, and post-merge retrospectives. Humans stay in control at five explicit gates: idea review, spec review, backlog review, code review, and merge.
 
 ## Pipeline
 
 ```mermaid
 flowchart LR
     subgraph Ideas
-        A["Drop files\nin ideas/"] --> B["Idea Agent\ntriage + refine"]
+        A["Drop files\nin ideas/"] --> B["Idea Agent\ntriage"]
+        B -->|"🧑 Idea Review"| B2["Idea Agent\nrefine"]
+        B2 -->|"comment"| B
+        B -->|"merge PR"| B3["Pending Gate\nwaits for merge"]
     end
 
     subgraph Specs
-        B --> C["Spec Agent\nwrite spec"]
+        B3 --> C["Spec Agent\nwrite spec"]
         C -->|"🧑 Spec Review"| D["Planner\ngenerate stories"]
         D -->|"🧑 Backlog Review"| E["Stories created\nin target repos"]
     end
@@ -70,10 +73,11 @@ Debug with `ottonate rules-check owner/repo` to see the merged result.
 
 ### Human Gates
 
-Four points where the pipeline pauses for human judgment:
+Five points where the pipeline pauses for human judgment:
 
 | Gate | Label | How to Proceed |
 |---|---|---|
+| **Idea Review** | `agentIdeaReview` | Comment on the idea PR to refine, or merge to approve |
 | **Spec Review** | `agentSpecReview` | Merge or close the spec PR in the engineering repo |
 | **Backlog Review** | `agentBacklogReview` | Merge the backlog PR, or comment "backlog approved" |
 | **Code Review** | `agentReview` | Approve the PR on GitHub |
@@ -101,11 +105,10 @@ The quality gate runs on Haiku for speed and cost. Everything else runs on Sonne
 ottonate dashboard
 ```
 
-Opens a web UI at `http://127.0.0.1:8080` with three views:
+Opens a web UI at `http://127.0.0.1:8080` with two views:
 
 - **Pipeline Board**: Kanban view grouping issues into Ideation, Planning, Implementing, Awaiting Human, and Stuck. Each card links to GitHub. Auto-refreshes every 10 seconds.
 - **Attention Queue**: Prioritized list of items needing human action. Stuck items surface first, then merge-ready, then reviews. Inline buttons to unstick, approve, or merge.
-- **Metrics**: Throughput stats (total issues, completed, cost per issue), per-stage breakdowns (runs, retries, stuck count), and recent completions. Filter by time window with `?days=N`.
 
 ## Quick Start
 
@@ -162,11 +165,12 @@ After setup, label any issue with `otto` (or your chosen entry label) to feed it
 The ideas pipeline (Step 0) lets anyone contribute product ideas without writing a formal spec.
 
 1. **Drop files** in `ideas/{project_name}/` in the engineering repo and open a PR
-2. **Idea agent triages**: reads your files, synthesizes a structured `INTENT.md`, creates a linked GitHub issue
-3. **Human reviews** the INTENT.md on the PR; leave comments to trigger refinement cycles
-4. **Merge the PR** to unlock the issue and feed it into the spec pipeline
+2. **Idea agent triages** (`agentIdeaTriage`): reads your files, synthesizes a structured `INTENT.md`, creates a linked GitHub issue, labels it `agentIdeaReview`
+3. **Human reviews** (`agentIdeaReview`): read the INTENT.md on the PR and leave comments to request changes. Each comment triggers the idea agent to refine (`agentIdeaRefining`) and return to review
+4. **Merge the PR** to approve the idea. The linked issue is labeled `agentIdeaPending`, which blocks until the PR merge is detected
+5. **Pending gate clears** (`agentIdeaPending`): once the PR merges, the issue is unlocked and fed into the spec pipeline
 
-The idea agent handles the back-and-forth. You provide raw thoughts; it produces a spec-ready issue.
+The idea agent handles the review/refine loop. You provide raw thoughts and feedback; it produces a spec-ready issue.
 
 ## CLI Reference
 
@@ -228,7 +232,6 @@ All configuration is via environment variables with the `OTTONATE_` prefix, load
 | Variable | Default | Description |
 |---|---|---|
 | `OTTONATE_WORKSPACE_DIR` | `~/.ottonate/workspaces` | Directory for cloned repo workspaces |
-| `OTTONATE_DB_PATH` | `~/.ottonate/ottonate.db` | SQLite metrics database path |
 
 ## Instructions for Agents
 
