@@ -8,7 +8,6 @@ repo are broken into stories across target repos.
 ## Prerequisites
 
 - Python 3.11+
-- [uv](https://docs.astral.sh/uv/) package manager
 - [GitHub CLI](https://cli.github.com/) (`gh`) authenticated
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`) installed and authenticated
 
@@ -126,10 +125,13 @@ label) to feed it into the pipeline.
 ## Usage
 
 ```bash
+ottonate setup                     # Interactive onboarding: .env, labels, engineering repo
 ottonate run                       # Start the scheduler daemon
 ottonate process owner/repo#42     # Push a single issue through one pipeline step
+ottonate process-idea owner/repo#42  # Triage and refine a single idea issue
 ottonate sync-agents               # Sync agent definitions to ~/.claude/agents/
 ottonate init-engineering          # Bootstrap the engineering repo with scaffolding
+ottonate dashboard                 # Start the web dashboard UI
 ottonate rules-check owner/repo    # Display merged rules for a repo
 ```
 
@@ -142,6 +144,7 @@ loaded by Pydantic settings from `.env`.
 |---|---|---|
 | `OTTONATE_GITHUB_ORG` | GitHub organization name | |
 | `OTTONATE_GITHUB_ENGINEERING_REPO` | Engineering/knowledge repo name | `engineering` |
+| `OTTONATE_GITHUB_ENGINEERING_BRANCH` | Default branch of the engineering repo | `main` |
 | `OTTONATE_GITHUB_AGENT_LABEL` | Entry label that marks issues for the pipeline | `otto` |
 | `OTTONATE_GITHUB_USERNAME` | Bot account username (for filtering self-comments) | |
 | `OTTONATE_GITHUB_NOTIFY_TEAM` | Team/user to @mention on events | |
@@ -150,6 +153,19 @@ loaded by Pydantic settings from `.env`.
 | `OTTONATE_AWS_REGION` | AWS region for Bedrock | |
 | `OTTONATE_AWS_PROFILE` | AWS credentials profile | |
 | `OTTONATE_BEDROCK_MODEL` | Bedrock model ID (e.g. `us.anthropic.claude-sonnet-4-20250514`) | |
+| `OTTONATE_BEDROCK_SMALL_MODEL` | Bedrock model ID for fast/cheap tasks | |
+| `OTTONATE_IDEAS_DIR` | Directory name for idea files in the engineering repo | `ideas` |
+| `OTTONATE_MAX_CONCURRENT_TICKETS` | Max issues processed in parallel | `3` |
+| `OTTONATE_POLL_INTERVAL_S` | Scheduler polling interval in seconds | `30` |
+| `OTTONATE_MAX_PLAN_RETRIES` | Max retries for the planning stage | `2` |
+| `OTTONATE_MAX_IMPLEMENT_RETRIES` | Max retries for the implementation stage | `2` |
+| `OTTONATE_MAX_CI_FIX_RETRIES` | Max retries for CI fix attempts | `3` |
+| `OTTONATE_MAX_REVIEW_RETRIES` | Max retries for review address cycles | `5` |
+| `OTTONATE_RATE_LIMIT_BASE_DELAY_S` | Initial backoff delay for rate limits | `60` |
+| `OTTONATE_RATE_LIMIT_MAX_DELAY_S` | Max backoff delay for rate limits | `600` |
+| `OTTONATE_RATE_LIMIT_COOLDOWN_S` | Cooldown period after rate limit recovery | `300` |
+| `OTTONATE_WORKSPACE_DIR` | Directory for cloned repo workspaces | `~/.ottonate/workspaces` |
+| `OTTONATE_DB_PATH` | Path to SQLite metrics database | `~/.ottonate/ottonate.db` |
 
 ## How It Works
 
@@ -160,13 +176,19 @@ GitHub, finds actionable issues, and dispatches them to the appropriate handler.
 
 ### Pipeline Stages
 
+**Idea path** (engineering repo, Step 0):
+`otto` -> `agentIdeaTriage` -> `agentIdeaReview` ->
+(if refinement needed) `agentIdeaRefining` -> spec issue created
+
 **Spec path** (engineering repo):
 `otto` -> `agentSpec` -> `agentSpecReview` -> `agentSpecApproved` ->
 `agentBacklogGen` -> `agentBacklogReview` -> stories created in target repos
 
 **Dev path** (target repos):
 `otto` -> `agentPlanning` -> `agentPlanReview` -> `agentPlan` ->
-`agentImplementing` -> `agentPR` -> `agentSelfReview` -> `agentReview` ->
+`agentImplementing` -> `agentPR` -> (if CI fails) `agentCIFix` ->
+`agentSelfReview` -> `agentReview` ->
+(if changes requested) `agentAddressingReview` -> `agentReview` ->
 `agentMergeReady` -> (if issues detected) `agentRetro`
 
 Any stage can move to `agentStuck` if the pipeline cannot proceed without
@@ -178,6 +200,7 @@ See [PIPELINE.md](PIPELINE.md) for the full flow diagram and stage details.
 
 | Agent | Role |
 |---|---|
+| `otto-idea-agent` | Triages and refines raw ideas into spec-ready issues |
 | `otto-spec-agent` | Generates product specifications from initiatives |
 | `otto-planner` | Produces development plans and breaks specs into stories |
 | `otto-quality-gate` | Evaluates plans against acceptance criteria |
@@ -212,14 +235,15 @@ Three layers of configuration, most specific wins:
 Run `ottonate init-engineering` to bootstrap the engineering repo with:
 
 - `architecture/overview.md` and `architecture/repos.md` (auto-populated from org scan)
-- `specs/` and `decisions/` directories
+- `ideas/`, `specs/`, and `decisions/` directories
 - `.ottonate/config.yml` and `.ottonate/rules.md` defaults
 
 ## Development
 
 ```bash
 pip install -e ".[dev]"
-pytest tests/ -v
+ruff check src/ tests/             # Lint
+pytest tests/ -v                   # Test
 ```
 
 Tests use `pytest` with `pytest-asyncio` in auto mode. Pipeline tests patch
