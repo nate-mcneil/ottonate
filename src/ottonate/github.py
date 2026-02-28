@@ -172,6 +172,33 @@ class GitHubClient:
             body,
         )
 
+    async def get_issue_timeline(self, owner: str, repo: str, number: int) -> list[dict]:
+        """Fetch label events from the issue timeline API."""
+        stdout = await self._gh(
+            "api",
+            f"repos/{owner}/{repo}/issues/{number}/timeline",
+            "--paginate",
+        )
+        if not stdout:
+            return []
+        events = json.loads(stdout)
+        result = []
+        for e in events:
+            event_type = e.get("event")
+            if event_type not in ("labeled", "unlabeled"):
+                continue
+            label_data = e.get("label")
+            if not label_data or "name" not in label_data:
+                continue
+            result.append(
+                {
+                    "event": event_type,
+                    "label": label_data["name"],
+                    "created_at": e.get("created_at", ""),
+                }
+            )
+        return result
+
     async def get_comments(self, owner: str, repo: str, number: int) -> list[str]:
         stdout = await self._gh(
             "issue",

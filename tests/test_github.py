@@ -229,3 +229,52 @@ class TestMergePr:
         with patch("asyncio.create_subprocess_exec", return_value=_gh_result("", returncode=1)):
             with pytest.raises(RuntimeError, match="Failed to merge"):
                 await github.merge_pr("org", "repo", 42)
+
+
+class TestGetIssueTimeline:
+    @pytest.mark.asyncio
+    async def test_returns_label_events(self, github):
+        events = [
+            {
+                "event": "labeled",
+                "label": {"name": "agentPlanning"},
+                "created_at": "2025-01-01T00:00:00Z",
+            },
+            {
+                "event": "unlabeled",
+                "label": {"name": "agentPlanning"},
+                "created_at": "2025-01-01T01:00:00Z",
+            },
+            {
+                "event": "labeled",
+                "label": {"name": "agentStuck"},
+                "created_at": "2025-01-01T02:00:00Z",
+            },
+            {"event": "commented", "body": "hello"},
+        ]
+        with patch("asyncio.create_subprocess_exec", return_value=_gh_result(json.dumps(events))):
+            result = await github.get_issue_timeline("o", "r", 1)
+        assert len(result) == 3
+        assert result[0]["label"] == "agentPlanning"
+        assert result[0]["event"] == "labeled"
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_on_error(self, github):
+        with patch("asyncio.create_subprocess_exec", return_value=_gh_result("", returncode=1)):
+            result = await github.get_issue_timeline("o", "r", 1)
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_handles_missing_label_key(self, github):
+        events = [
+            {"event": "labeled", "created_at": "2025-01-01T00:00:00Z"},
+            {
+                "event": "labeled",
+                "label": {"name": "agentPlan"},
+                "created_at": "2025-01-02T00:00:00Z",
+            },
+        ]
+        with patch("asyncio.create_subprocess_exec", return_value=_gh_result(json.dumps(events))):
+            result = await github.get_issue_timeline("o", "r", 1)
+        assert len(result) == 1
+        assert result[0]["label"] == "agentPlan"
