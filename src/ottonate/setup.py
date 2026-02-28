@@ -118,6 +118,7 @@ async def init_empty_repo(owner: str, repo: str) -> bool:
             ["git", "init"],
             ["git", "config", "user.email", "ottonate@setup"],
             ["git", "config", "user.name", "ottonate"],
+            ["git", "config", "credential.helper", "!gh auth git-credential"],
         ]:
             proc = await asyncio.create_subprocess_exec(
                 *cmd, cwd=str(work),
