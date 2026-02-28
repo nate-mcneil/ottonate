@@ -62,14 +62,14 @@ ottonate/
     agents.py                # Agent definition sync (repo -> ~/.claude/agents/)
     enrichment.py            # Story enrichment (AC, tech notes, test expectations)
     traceability.py          # Artifact traceability graph (spec -> story -> PR -> tests)
-    metrics.py               # Stage metrics persistence (SQLite)
+    metrics.py               # Issue metrics derived from GitHub timeline + structured comments
     init_engineering.py      # Engineering repo bootstrap (scaffold + org scan)
     github.py                # GitHub via gh CLI (issue CRUD, PRs, labels, projects)
     dashboard/               # Local web dashboard (FastAPI + HTMX + Primer CSS)
       app.py                 # FastAPI app factory
       api.py                 # JSON API endpoints
       views.py               # HTML page routes
-      templates/             # Jinja2 templates (base, pipeline, attention, metrics)
+      templates/             # Jinja2 templates (base, pipeline, attention)
       static/                # CSS overrides
   tests/
     conftest.py              # Shared fixtures (config, mocks, sample_ticket)
@@ -146,15 +146,13 @@ configuration (model, maxTurns) and markdown for the system prompt.
 ### Dashboard
 
 `ottonate dashboard` starts a local web UI (FastAPI + HTMX + Primer CSS) on
-`127.0.0.1:8080`. Three views:
+`127.0.0.1:8080`. Two views:
 
 - **Pipeline Board** (`/`) -- kanban board grouping issues into Planning,
   Implementing, Awaiting Human, and Stuck columns.
 - **Attention Queue** (`/attention`) -- prioritized list of items needing human
   action (stuck, needs merge, needs review, needs approval) with inline action
   buttons.
-- **Metrics** (`/metrics`) -- aggregate stats from the SQLite metrics DB
-  (throughput, cost, reliability by stage, recent completions).
 
 All issue/PR detail links open GitHub in a new tab. The dashboard auto-refreshes
 via HTMX polling every 10 seconds.

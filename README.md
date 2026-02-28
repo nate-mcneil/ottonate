@@ -44,7 +44,6 @@ loaded by Pydantic settings from `.env`.
 | `OTTONATE_GITHUB_NOTIFY_TEAM` | Team/user to @mention on events | |
 | `OTTONATE_CLAUDE_MODEL` | Claude model to use | `sonnet` |
 | `OTTONATE_USE_BEDROCK` | Use AWS Bedrock instead of direct API | `false` |
-| `OTTONATE_DB_PATH` | Path to SQLite metrics database | `~/.ottonate/ottonate.db` |
 
 ## How It Works
 
