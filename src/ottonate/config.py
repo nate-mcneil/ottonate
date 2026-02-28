@@ -29,6 +29,10 @@ class OttonateConfig(BaseSettings):
     bedrock_model: str = ""
     bedrock_small_model: str = ""
 
+    # Ideas (Step 0)
+    ideas_dir: str = "ideas"
+    idea_poll_enabled: bool = True
+
     # Scheduler
     max_concurrent_tickets: int = 3
     poll_interval_s: int = 30

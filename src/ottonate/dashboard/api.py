@@ -10,6 +10,9 @@ from ottonate.models import Label
 router = APIRouter()
 
 PHASE_MAP: dict[str, str] = {
+    Label.IDEA_TRIAGE.value: "ideation",
+    Label.IDEA_REFINING.value: "ideation",
+    Label.IDEA_REVIEW.value: "awaiting_human",
     Label.SPEC.value: "planning",
     Label.PLANNING.value: "planning",
     Label.PLAN_REVIEW.value: "planning",
@@ -30,6 +33,7 @@ PHASE_MAP: dict[str, str] = {
 }
 
 HUMAN_GATE_LABELS = {
+    Label.IDEA_REVIEW.value,
     Label.SPEC_REVIEW.value,
     Label.BACKLOG_REVIEW.value,
     Label.REVIEW.value,

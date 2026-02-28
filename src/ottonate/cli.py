@@ -69,6 +69,78 @@ def process(issue_ref: str) -> None:
     asyncio.run(scheduler.process_single(owner, repo, number))
 
 
+@main.command("process-idea")
+@click.argument("pr_ref")
+def process_idea(pr_ref: str) -> None:
+    """Manually process an idea PR through the idea pipeline.
+
+    PR_REF should be in the format owner/repo#number (e.g. smereddy/engineering#1).
+    """
+    from ottonate.agents import sync_agent_definitions
+    from ottonate.github import GitHubClient
+    from ottonate.models import IdeaPR
+    from ottonate.pipeline import Pipeline
+    from ottonate.rules import load_rules
+
+    sync_agent_definitions()
+    owner, repo, number = _parse_issue_ref(pr_ref)
+    config = _get_config()
+    github = GitHubClient()
+
+    async def _process() -> None:
+        # Fetch PR details to get branch, labels, title
+        details = await github.get_pr_details(owner, repo, number)
+        if not details:
+            click.echo(f"Could not find PR #{number} in {owner}/{repo}")
+            return
+
+        pr_labels = {
+            lbl.get("name", "") if isinstance(lbl, dict) else str(lbl)
+            for lbl in details.get("labels", [])
+        }
+
+        # Get PR files to extract project name
+        pr_files = await github.get_pr_files(owner, repo, number)
+        ideas_dir = config.ideas_dir
+        project_name = ""
+        prefix = f"{ideas_dir}/"
+        for f in pr_files:
+            filename = f.get("filename", "")
+            if filename.startswith(prefix):
+                rest = filename[len(prefix):]
+                parts = rest.split("/")
+                if parts and parts[0]:
+                    project_name = parts[0]
+                    break
+
+        if not project_name:
+            click.echo(f"No idea files found in {ideas_dir}/ for PR #{number}")
+            return
+
+        idea_pr = IdeaPR(
+            owner=owner,
+            repo=repo,
+            pr_number=number,
+            branch=details.get("headRefName", ""),
+            labels=pr_labels,
+            title=details.get("title", ""),
+            project_name=project_name,
+        )
+
+        click.echo(f"Processing idea PR: {idea_pr.pr_ref} (project: {project_name})")
+
+        from ottonate.metrics import MetricsStore
+
+        metrics = MetricsStore(config.resolved_db_path())
+        await metrics.init_db()
+        pipeline = Pipeline(config, github, metrics=metrics)
+        rules = await load_rules(owner, repo, config, github)
+        await pipeline.handle_idea_pr(idea_pr, rules)
+        click.echo("Done.")
+
+    asyncio.run(_process())
+
+
 @main.command("sync-agents")
 def sync_agents() -> None:
     """Sync agent definitions from repo to ~/.claude/agents/."""

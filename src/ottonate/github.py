@@ -506,6 +506,126 @@ class GitHubClient:
         data = json.loads(stdout)
         return data.get("items", data) if isinstance(data, dict) else data
 
+    # -- Idea PR operations --
+
+    async def list_open_prs(self, owner: str, repo: str) -> list[dict]:
+        stdout = await self._gh(
+            "pr",
+            "list",
+            "--repo",
+            f"{owner}/{repo}",
+            "--state",
+            "open",
+            "--json",
+            "number,headRefName,labels,title",
+            "--limit",
+            "50",
+        )
+        if not stdout:
+            return []
+        return json.loads(stdout)
+
+    async def get_pr_files(self, owner: str, repo: str, pr_number: int) -> list[dict]:
+        stdout = await self._gh(
+            "api",
+            f"repos/{owner}/{repo}/pulls/{pr_number}/files",
+        )
+        if not stdout:
+            return []
+        return json.loads(stdout)
+
+    async def get_pr_details(self, owner: str, repo: str, pr_number: int) -> dict:
+        stdout = await self._gh(
+            "pr",
+            "view",
+            str(pr_number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--json",
+            "number,headRefName,labels,title,body,comments,state",
+        )
+        if not stdout:
+            return {}
+        return json.loads(stdout)
+
+    async def add_pr_label(self, owner: str, repo: str, pr_number: int, label: str) -> None:
+        await self._gh(
+            "pr",
+            "edit",
+            str(pr_number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--add-label",
+            label,
+        )
+        log.info("pr_label_added", repo=f"{owner}/{repo}", pr=pr_number, label=label)
+
+    async def remove_pr_label(self, owner: str, repo: str, pr_number: int, label: str) -> None:
+        await self._gh(
+            "pr",
+            "edit",
+            str(pr_number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--remove-label",
+            label,
+        )
+        log.info("pr_label_removed", repo=f"{owner}/{repo}", pr=pr_number, label=label)
+
+    async def swap_pr_label(
+        self, owner: str, repo: str, pr_number: int, remove: Label, add: Label
+    ) -> None:
+        await self._gh(
+            "pr",
+            "edit",
+            str(pr_number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--remove-label",
+            remove.value,
+            "--add-label",
+            add.value,
+        )
+        log.info(
+            "pr_label_swap",
+            repo=f"{owner}/{repo}",
+            pr=pr_number,
+            removed=remove.value,
+            added=add.value,
+        )
+
+    async def get_directory_contents(
+        self, owner: str, repo: str, path: str, ref: str = "main"
+    ) -> list[dict]:
+        stdout = await self._gh(
+            "api",
+            f"repos/{owner}/{repo}/contents/{path}",
+            "-H",
+            "Accept: application/vnd.github.v3+json",
+            "--method",
+            "GET",
+            "-f",
+            f"ref={ref}",
+        )
+        if not stdout:
+            return []
+        data = json.loads(stdout)
+        if isinstance(data, list):
+            return data
+        return [data]
+
+    async def edit_issue_body(self, owner: str, repo: str, number: int, body: str) -> None:
+        await self._gh(
+            "issue",
+            "edit",
+            str(number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--body",
+            body,
+        )
+        log.info("issue_body_edited", repo=f"{owner}/{repo}", number=number)
+
     # -- File content --
 
     async def get_file_content(
@@ -570,6 +690,36 @@ class GitHubClient:
             "--add-assignee",
             assignee,
         )
+
+    # -- Label management --
+
+    async def ensure_labels(
+        self, owner: str, repo: str, labels: dict[str, str]
+    ) -> list[str]:
+        """Create any missing labels in a repo. Returns list of labels created.
+
+        ``labels`` maps label name to hex color (without #).
+        """
+        stdout = await self._gh(
+            "label", "list", "--repo", f"{owner}/{repo}", "--json", "name", "--limit", "200"
+        )
+        existing = set()
+        if stdout:
+            existing = {item.get("name", "") for item in json.loads(stdout)}
+
+        created: list[str] = []
+        for name, color in labels.items():
+            if name not in existing:
+                result = await self._gh(
+                    "label", "create", name,
+                    "--repo", f"{owner}/{repo}",
+                    "--color", color,
+                    "--force",
+                )
+                if result or result == "":
+                    created.append(name)
+                    log.info("label_created", repo=f"{owner}/{repo}", label=name)
+        return created
 
     # -- Internal --
 
