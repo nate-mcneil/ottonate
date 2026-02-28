@@ -1,8 +1,8 @@
 # Ottonate
 
-**Label a GitHub issue. Get a reviewed, CI-green PR.**
+**Drop an idea. Get a reviewed, CI-green PR.**
 
-Ottonate is an autonomous dev pipeline that turns GitHub issues into merged pull requests, with an ideas pipeline that lets anyone contribute raw product ideas. Nine Claude agents handle planning, implementation, CI fixes, code review, and post-merge retrospectives. Humans stay in control at five explicit gates: idea review, spec review, backlog review, code review, and merge.
+Ottonate is an autonomous dev pipeline that turns raw product ideas into merged pull requests. Nine Claude agents handle triage, planning, implementation, CI fixes, code review, and post-merge retrospectives. Humans stay in control at five explicit gates: idea review, spec review, backlog review, code review, and merge.
 
 ## Pipeline
 
