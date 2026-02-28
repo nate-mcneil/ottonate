@@ -1,26 +1,124 @@
 # Ottonate
 
-Automated GitHub issue-to-PR pipeline powered by Claude agents. Takes issues
-from planning through implementation, CI, code review, and merge readiness.
-Supports a spec-driven development flow where initiatives in an engineering
-repo are broken into stories across target repos.
+**Label a GitHub issue. Get a reviewed, CI-green PR.**
 
-## Prerequisites
+Ottonate is an autonomous dev pipeline that turns GitHub issues into merged pull requests. Nine Claude agents handle planning, implementation, CI fixes, code review, and post-merge retrospectives. Humans stay in control at four explicit gates: spec review, backlog review, code review, and merge.
+
+## Pipeline
+
+```mermaid
+flowchart LR
+    subgraph Ideas
+        A["Drop files\nin ideas/"] --> B["Idea Agent\ntriage + refine"]
+    end
+
+    subgraph Specs
+        B --> C["Spec Agent\nwrite spec"]
+        C -->|"🧑 Spec Review"| D["Planner\ngenerate stories"]
+        D -->|"🧑 Backlog Review"| E["Stories created\nin target repos"]
+    end
+
+    subgraph Dev
+        E --> F["Planner\ndev plan"]
+        F --> G["Quality Gate\npass/fail"]
+        G --> H["Implementer\nbranch + code + PR"]
+        H --> I["CI Fixer\n(if needed)"]
+        I --> J["Self Review"]
+        J -->|"🧑 Code Review"| K["Review Responder\naddress feedback"]
+        K -->|"🧑 Merge"| L["Merged"]
+    end
+
+    L --> M["Retro Agent"]
+    M -.->|"improves rules\n& architecture"| C
+
+    style A fill:#f9f,stroke:#333
+    style L fill:#0d0,stroke:#333
+```
+
+> **🧑 = human gate.** The pipeline pauses and waits for a person to review, approve, or merge.
+
+## Why Ottonate
+
+| Problem | How Ottonate Solves It |
+|---|---|
+| Plans get ignored during implementation | Quality gate agent evaluates every plan against acceptance criteria before a single line of code is written |
+| AI-generated code fails review | Self-review agent catches issues before humans see the PR; review-responder addresses feedback inline |
+| No memory between issues | Engineering repo accumulates architecture docs, rules, and decisions; every agent reads them |
+| External state diverges from code | Retro agent proposes engineering repo updates after every merge, keeping docs current |
+| Org patterns break AI output | Three-layer rules system (built-in, org, repo) injects coding conventions into every prompt |
+| Ideas get lost before they become work | Drop files in `ideas/`, get a triaged spec issue with a structured INTENT.md |
+
+## Key Concepts
+
+### Labels as State Machine
+
+Every issue carries a permanent entry label (default `otto`) that marks it as pipeline-eligible. A second, mutable label tracks the current stage. The scheduler polls GitHub, finds actionable labels, and dispatches to the right handler. No external workflow engine, no queue infrastructure.
+
+### The Engineering Repo
+
+A dedicated repository (default name `engineering`) that serves as the org-level knowledge base. Contains architecture docs, product specs, backlog decisions, ADRs, and coding conventions. Every agent reads from it. The retro agent writes back to it. Run `ottonate init-engineering` to scaffold it from an org scan.
+
+### The Rules System
+
+Three layers of configuration, most specific wins:
+
+1. **Built-in defaults**: branch patterns, commit formats, label names
+2. **Org-level**: `.ottonate/config.yml` and `.ottonate/rules.md` from the engineering repo, plus `architecture/` docs
+3. **Repo-level**: `.ottonate/config.yml` and `.ottonate/rules.md` from each target repo
+
+Debug with `ottonate rules-check owner/repo` to see the merged result.
+
+### Human Gates
+
+Four points where the pipeline pauses for human judgment:
+
+| Gate | Label | How to Proceed |
+|---|---|---|
+| **Spec Review** | `agentSpecReview` | Merge or close the spec PR in the engineering repo |
+| **Backlog Review** | `agentBacklogReview` | Merge the backlog PR, or comment "backlog approved" |
+| **Code Review** | `agentReview` | Approve the PR on GitHub |
+| **Merge** | `agentMergeReady` | Merge the PR |
+
+## Agents
+
+| Agent | Role | Model | Key Behavior |
+|---|---|---|---|
+| `otto-idea-agent` | Triage and refine raw ideas | Sonnet | Reads idea files, writes INTENT.md, creates spec issue |
+| `otto-spec-agent` | Generate product specifications | Sonnet | Reads initiative issue, writes SPEC.md |
+| `otto-planner` | Produce dev plans and break specs into stories | Sonnet | Analyzes codebase, writes PLAN.md, generates story JSON |
+| `otto-quality-gate` | Evaluate plans against acceptance criteria | **Haiku** | Read-only; returns pass/fail/escalate verdict |
+| `otto-implementer` | Write code, create PRs | Sonnet | TDD workflow: failing tests first, then implementation, atomic commits |
+| `otto-ci-fixer` | Fix CI failures | Sonnet | Reads failure logs, identifies root cause, pushes fix |
+| `otto-reviewer` | Self-review PRs | Sonnet | Read-only; checks quality, correctness, plan adherence |
+| `otto-review-responder` | Address human review comments | Sonnet | Makes code changes for nitpicks, answers questions, pushes fixes |
+| `otto-retro` | Run retrospectives | Sonnet | Proposes engineering repo improvements, can file self-improvement issues |
+
+The quality gate runs on Haiku for speed and cost. Everything else runs on Sonnet.
+
+## Dashboard
+
+```bash
+ottonate dashboard
+```
+
+Opens a web UI at `http://127.0.0.1:8080` with three views:
+
+- **Pipeline Board**: Kanban view grouping issues into Ideation, Planning, Implementing, Awaiting Human, and Stuck. Each card links to GitHub. Auto-refreshes every 10 seconds.
+- **Attention Queue**: Prioritized list of items needing human action. Stuck items surface first, then merge-ready, then reviews. Inline buttons to unstick, approve, or merge.
+- **Metrics**: Throughput stats (total issues, completed, cost per issue), per-stage breakdowns (runs, retries, stuck count), and recent completions. Filter by time window with `?days=N`.
+
+## Quick Start
+
+### Prerequisites
 
 - Python 3.11+
 - [GitHub CLI](https://cli.github.com/) (`gh`) authenticated
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`) installed and authenticated
+- [uv](https://docs.astral.sh/uv/) package manager
 
-## Authentication
-
-Ottonate invokes Claude agents via the
-[Claude Agent SDK](https://docs.anthropic.com/en/docs/claude-code/sdk),
-which delegates to the `claude` CLI under the hood. It does not manage API keys
-itself; authentication is inherited from whatever the CLI is configured with.
+### Authentication
 
 **Option A: Anthropic API (default)**
-
-Authenticate the Claude Code CLI with one of:
 
 ```bash
 # Interactive OAuth login (opens browser)
@@ -30,8 +128,7 @@ claude login
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Verify with `claude --version` and a quick `claude -p "hello"` to confirm
-the CLI can reach the API.
+Verify with `claude --version` and a quick `claude -p "hello"` to confirm the CLI can reach the API.
 
 **Option B: AWS Bedrock**
 
@@ -44,70 +141,137 @@ OTTONATE_AWS_PROFILE=your-aws-profile    # optional, uses default chain if unset
 OTTONATE_BEDROCK_MODEL=us.anthropic.claude-sonnet-4-20250514
 ```
 
-Standard AWS credential resolution applies (env vars, `~/.aws/credentials`,
-instance profile, etc.). The pipeline sets `CLAUDE_CODE_USE_BEDROCK=1` and
-passes through `AWS_REGION` and `AWS_PROFILE` to each agent invocation.
+Standard AWS credential resolution applies (env vars, `~/.aws/credentials`, instance profile, etc.).
 
-## Installation
+### Install and Run
 
 ```bash
 git clone https://github.com/nate-mcneil/ottonate.git
 cd ottonate
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
+
+ottonate setup               # Interactive onboarding: .env, labels, engineering repo
+ottonate init-engineering     # Scaffold engineering repo with auto-discovered architecture docs
+ottonate run                  # Start the scheduler daemon
 ```
+
+After setup, label any issue with `otto` (or your chosen entry label) to feed it into the pipeline.
+
+## Ideas Pipeline
+
+The ideas pipeline (Step 0) lets anyone contribute product ideas without writing a formal spec.
+
+1. **Drop files** in `ideas/{project_name}/` in the engineering repo and open a PR
+2. **Idea agent triages**: reads your files, synthesizes a structured `INTENT.md`, creates a linked GitHub issue
+3. **Human reviews** the INTENT.md on the PR; leave comments to trigger refinement cycles
+4. **Merge the PR** to unlock the issue and feed it into the spec pipeline
+
+The idea agent handles the back-and-forth. You provide raw thoughts; it produces a spec-ready issue.
+
+## CLI Reference
+
+```bash
+ottonate setup                       # Interactive onboarding: .env, labels, engineering repo
+ottonate run                         # Start the scheduler daemon
+ottonate process owner/repo#42       # Push a single issue through one pipeline step
+ottonate process-idea owner/repo#42  # Triage and refine a single idea issue
+ottonate sync-agents                 # Sync agent definitions to ~/.claude/agents/
+ottonate init-engineering            # Bootstrap engineering repo with scaffolding
+ottonate dashboard [--port 8080]     # Start the web dashboard UI
+ottonate rules-check owner/repo      # Display merged rules for a repo
+```
+
+## Configuration
+
+All configuration is via environment variables with the `OTTONATE_` prefix, loaded from `.env` by Pydantic settings.
+
+### GitHub
+
+| Variable | Default | Description |
+|---|---|---|
+| `OTTONATE_GITHUB_ORG` | *(required)* | GitHub organization name |
+| `OTTONATE_GITHUB_ENGINEERING_REPO` | `engineering` | Engineering/knowledge repo name |
+| `OTTONATE_GITHUB_ENGINEERING_BRANCH` | `main` | Default branch of the engineering repo |
+| `OTTONATE_GITHUB_AGENT_LABEL` | `otto` | Entry label that marks issues for the pipeline |
+| `OTTONATE_GITHUB_USERNAME` | | Bot account username (for filtering self-comments) |
+| `OTTONATE_GITHUB_NOTIFY_TEAM` | | Team/user to @mention on events |
+
+### Model
+
+| Variable | Default | Description |
+|---|---|---|
+| `OTTONATE_CLAUDE_MODEL` | `sonnet` | Claude model to use |
+| `OTTONATE_USE_BEDROCK` | `false` | Route through AWS Bedrock instead of Anthropic API |
+| `OTTONATE_AWS_REGION` | | AWS region for Bedrock |
+| `OTTONATE_AWS_PROFILE` | | AWS credentials profile |
+| `OTTONATE_BEDROCK_MODEL` | | Bedrock model ID (e.g. `us.anthropic.claude-sonnet-4-20250514`) |
+| `OTTONATE_BEDROCK_SMALL_MODEL` | | Bedrock model ID for fast/cheap tasks (quality gate) |
+
+### Pipeline Tuning
+
+| Variable | Default | Description |
+|---|---|---|
+| `OTTONATE_MAX_CONCURRENT_TICKETS` | `3` | Max issues processed in parallel |
+| `OTTONATE_POLL_INTERVAL_S` | `30` | Scheduler polling interval in seconds |
+| `OTTONATE_IDEA_POLL_ENABLED` | `true` | Enable/disable polling for idea PRs |
+| `OTTONATE_IDEAS_DIR` | `ideas` | Directory name for idea files in the engineering repo |
+| `OTTONATE_MAX_PLAN_RETRIES` | `2` | Max retries for plan quality gate failures |
+| `OTTONATE_MAX_IMPLEMENT_RETRIES` | `2` | Max retries for blocked implementations |
+| `OTTONATE_MAX_CI_FIX_RETRIES` | `3` | Max retries for CI fix attempts |
+| `OTTONATE_MAX_REVIEW_RETRIES` | `5` | Max review-address cycles |
+| `OTTONATE_RATE_LIMIT_BASE_DELAY_S` | `60` | Initial backoff delay for rate limits (seconds) |
+| `OTTONATE_RATE_LIMIT_MAX_DELAY_S` | `600` | Max backoff delay (seconds) |
+| `OTTONATE_RATE_LIMIT_COOLDOWN_S` | `300` | Scheduler cooldown after rate limit recovery (seconds) |
+
+### Storage
+
+| Variable | Default | Description |
+|---|---|---|
+| `OTTONATE_WORKSPACE_DIR` | `~/.ottonate/workspaces` | Directory for cloned repo workspaces |
+| `OTTONATE_DB_PATH` | `~/.ottonate/ottonate.db` | SQLite metrics database path |
 
 ## Instructions for Agents
 
-If you are an AI agent (Claude Code, Cursor, Copilot, etc.) tasked with setting
-up ottonate for a user, follow these steps:
+If you are an AI agent (Claude Code, Cursor, Copilot, etc.) tasked with setting up ottonate for a user, follow these steps:
 
 1. **Clone and install**
    ```bash
    git clone https://github.com/nate-mcneil/ottonate.git
    cd ottonate
-   pip install -e ".[dev]"
+   uv pip install -e ".[dev]"
    ```
 
 2. **Verify GitHub CLI auth**
    ```bash
    gh auth status
    ```
-   If not authenticated, prompt the user to run `gh auth login` before
-   continuing.
+   If not authenticated, prompt the user to run `gh auth login` before continuing.
 
 3. **Verify Claude Code CLI auth**
    ```bash
    claude --version
    claude -p "hello"
    ```
-   If the CLI is not installed, prompt the user to install it
-   (`npm install -g @anthropic-ai/claude-code`). If not authenticated,
-   prompt the user to run `claude login` or set `ANTHROPIC_API_KEY`.
-   For Bedrock setups, confirm AWS credentials are configured and set the
-   `OTTONATE_USE_BEDROCK` / `OTTONATE_AWS_*` vars in `.env` (see
-   Authentication section above).
+   If the CLI is not installed, prompt the user to install it (`npm install -g @anthropic-ai/claude-code`). If not authenticated, prompt the user to run `claude login` or set `ANTHROPIC_API_KEY`. For Bedrock setups, confirm AWS credentials are configured and set the `OTTONATE_USE_BEDROCK` / `OTTONATE_AWS_*` vars in `.env` (see Authentication section above).
 
 4. **Run interactive setup**
    ```bash
    ottonate setup
    ```
-   This walks through an 8-step onboarding flow. You will need to respond to
-   prompts:
+   This walks through an 8-step onboarding flow. You will need to respond to prompts:
    - **Owner selection** (numbered list): pick the org or personal account
    - **Engineering repo name**: accept default `engineering` or enter a custom name
    - **Repo creation confirm**: confirm `Y` if the repo does not exist yet
    - **Entry label**: accept default `otto` or enter a custom label
    - **.env overwrite**: confirm only if the user wants to replace an existing `.env`
 
-   The command creates the engineering repo, writes `.env`, provisions pipeline
-   labels, and syncs agent definitions.
+   The command creates the engineering repo, writes `.env`, provisions pipeline labels, and syncs agent definitions.
 
 5. **Populate architecture docs**
    ```bash
    ottonate init-engineering
    ```
-   This scans the org's repos and opens a PR to the engineering repo with
-   auto-discovered architecture documentation.
+   This scans the org's repos and opens a PR to the engineering repo with auto-discovered architecture documentation.
 
 6. **Start the pipeline**
    ```bash
@@ -119,135 +283,30 @@ up ottonate for a user, follow these steps:
    ottonate dashboard
    ```
 
-After setup, the user can label any issue with `otto` (or their chosen entry
-label) to feed it into the pipeline.
+After setup, the user can label any issue with `otto` (or their chosen entry label) to feed it into the pipeline.
 
-## Usage
+## Key Files
 
-```bash
-ottonate setup                     # Interactive onboarding: .env, labels, engineering repo
-ottonate run                       # Start the scheduler daemon
-ottonate process owner/repo#42     # Push a single issue through one pipeline step
-ottonate process-idea owner/repo#42  # Triage and refine a single idea issue
-ottonate sync-agents               # Sync agent definitions to ~/.claude/agents/
-ottonate init-engineering          # Bootstrap the engineering repo with scaffolding
-ottonate dashboard                 # Start the web dashboard UI
-ottonate rules-check owner/repo    # Display merged rules for a repo
-```
-
-## Configuration
-
-All configuration is via environment variables with the `OTTONATE_` prefix,
-loaded by Pydantic settings from `.env`.
-
-| Variable | Description | Default |
-|---|---|---|
-| `OTTONATE_GITHUB_ORG` | GitHub organization name | |
-| `OTTONATE_GITHUB_ENGINEERING_REPO` | Engineering/knowledge repo name | `engineering` |
-| `OTTONATE_GITHUB_ENGINEERING_BRANCH` | Default branch of the engineering repo | `main` |
-| `OTTONATE_GITHUB_AGENT_LABEL` | Entry label that marks issues for the pipeline | `otto` |
-| `OTTONATE_GITHUB_USERNAME` | Bot account username (for filtering self-comments) | |
-| `OTTONATE_GITHUB_NOTIFY_TEAM` | Team/user to @mention on events | |
-| `OTTONATE_CLAUDE_MODEL` | Claude model to use | `sonnet` |
-| `OTTONATE_USE_BEDROCK` | Use AWS Bedrock instead of direct API | `false` |
-| `OTTONATE_AWS_REGION` | AWS region for Bedrock | |
-| `OTTONATE_AWS_PROFILE` | AWS credentials profile | |
-| `OTTONATE_BEDROCK_MODEL` | Bedrock model ID (e.g. `us.anthropic.claude-sonnet-4-20250514`) | |
-| `OTTONATE_BEDROCK_SMALL_MODEL` | Bedrock model ID for fast/cheap tasks | |
-| `OTTONATE_IDEAS_DIR` | Directory name for idea files in the engineering repo | `ideas` |
-| `OTTONATE_MAX_CONCURRENT_TICKETS` | Max issues processed in parallel | `3` |
-| `OTTONATE_POLL_INTERVAL_S` | Scheduler polling interval in seconds | `30` |
-| `OTTONATE_MAX_PLAN_RETRIES` | Max retries for the planning stage | `2` |
-| `OTTONATE_MAX_IMPLEMENT_RETRIES` | Max retries for the implementation stage | `2` |
-| `OTTONATE_MAX_CI_FIX_RETRIES` | Max retries for CI fix attempts | `3` |
-| `OTTONATE_MAX_REVIEW_RETRIES` | Max retries for review address cycles | `5` |
-| `OTTONATE_RATE_LIMIT_BASE_DELAY_S` | Initial backoff delay for rate limits | `60` |
-| `OTTONATE_RATE_LIMIT_MAX_DELAY_S` | Max backoff delay for rate limits | `600` |
-| `OTTONATE_RATE_LIMIT_COOLDOWN_S` | Cooldown period after rate limit recovery | `300` |
-| `OTTONATE_WORKSPACE_DIR` | Directory for cloned repo workspaces | `~/.ottonate/workspaces` |
-| `OTTONATE_DB_PATH` | Path to SQLite metrics database | `~/.ottonate/ottonate.db` |
-
-## How It Works
-
-Ottonate uses **GitHub labels as a state machine**. Every issue carries a
-permanent entry label (default `otto`) that marks it as pipeline-eligible.
-A second, mutable label indicates the current stage. The scheduler polls
-GitHub, finds actionable issues, and dispatches them to the appropriate handler.
-
-### Pipeline Stages
-
-**Idea path** (engineering repo, Step 0):
-`otto` -> `agentIdeaTriage` -> `agentIdeaReview` ->
-(if refinement needed) `agentIdeaRefining` -> spec issue created
-
-**Spec path** (engineering repo):
-`otto` -> `agentSpec` -> `agentSpecReview` -> `agentSpecApproved` ->
-`agentBacklogGen` -> `agentBacklogReview` -> stories created in target repos
-
-**Dev path** (target repos):
-`otto` -> `agentPlanning` -> `agentPlanReview` -> `agentPlan` ->
-`agentImplementing` -> `agentPR` -> (if CI fails) `agentCIFix` ->
-`agentSelfReview` -> `agentReview` ->
-(if changes requested) `agentAddressingReview` -> `agentReview` ->
-`agentMergeReady` -> (if issues detected) `agentRetro`
-
-Any stage can move to `agentStuck` if the pipeline cannot proceed without
-human intervention.
-
-See [PIPELINE.md](PIPELINE.md) for the full flow diagram and stage details.
-
-### Agents
-
-| Agent | Role |
+| File | Purpose |
 |---|---|
-| `otto-idea-agent` | Triages and refines raw ideas into spec-ready issues |
-| `otto-spec-agent` | Generates product specifications from initiatives |
-| `otto-planner` | Produces development plans and breaks specs into stories |
-| `otto-quality-gate` | Evaluates plans against acceptance criteria |
-| `otto-implementer` | Writes code, creates branches and PRs |
-| `otto-ci-fixer` | Reads CI failure logs and pushes fixes |
-| `otto-reviewer` | Self-reviews PRs against the original plan |
-| `otto-review-responder` | Addresses human review comments inline |
-| `otto-retro` | Runs retrospectives and proposes engineering repo improvements |
-
-### Improvement Loops
-
-After a PR is merged, if the issue experienced retries or got stuck at any
-point, the pipeline automatically triggers a retrospective. The retro agent:
-
-1. Analyzes pipeline metrics and review feedback
-2. Proposes targeted improvements to the engineering repo (rules, architecture docs)
-3. Opens a PR to the engineering repo
-4. Optionally files a self-improvement issue in the ottonate repo itself
-
-### Rules System
-
-Three layers of configuration, most specific wins:
-
-1. **Built-in defaults** -- sensible defaults shipped with ottonate
-2. **Org-level** -- `.ottonate/config.yml` and `.ottonate/rules.md` from the
-   engineering repo, plus architecture docs
-3. **Repo-level** -- `.ottonate/config.yml` and `.ottonate/rules.md` from each
-   target repo
-
-### Engineering Repo
-
-Run `ottonate init-engineering` to bootstrap the engineering repo with:
-
-- `architecture/overview.md` and `architecture/repos.md` (auto-populated from org scan)
-- `ideas/`, `specs/`, and `decisions/` directories
-- `.ottonate/config.yml` and `.ottonate/rules.md` defaults
+| `src/ottonate/pipeline.py` | Core pipeline logic: all stage handlers and agent orchestration |
+| `src/ottonate/scheduler.py` | Async polling loop, concurrency control, idea PR polling |
+| `src/ottonate/config.py` | All configuration via Pydantic settings |
+| `src/ottonate/models.py` | Label enum (state machine), ticket models, stage results |
+| `src/ottonate/rules.py` | Three-layer rules loader and merged config resolution |
+| `src/ottonate/prompts.py` | Prompt builders for every pipeline stage |
+| `src/ottonate/cli.py` | CLI entry points (click) |
+| `agents/*.md` | Agent definitions synced to `~/.claude/agents/` at startup |
 
 ## Development
 
 ```bash
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 ruff check src/ tests/             # Lint
 pytest tests/ -v                   # Test
 ```
 
-Tests use `pytest` with `pytest-asyncio` in auto mode. Pipeline tests patch
-`pipeline._run` to avoid real agent invocations.
+Tests use `pytest` with `pytest-asyncio` in auto mode. Pipeline tests patch `pipeline._run` to avoid real agent invocations.
 
 ## License
 
