@@ -46,13 +46,9 @@ class OttonateConfig(BaseSettings):
 
     # Paths
     workspace_dir: Path = Path("~/.ottonate/workspaces")
-    db_path: Path = Path("~/.ottonate/ottonate.db")
 
     def resolved_workspace_dir(self) -> Path:
         return self.workspace_dir.expanduser()
-
-    def resolved_db_path(self) -> Path:
-        return self.db_path.expanduser()
 
     @property
     def engineering_repo_full(self) -> str:
