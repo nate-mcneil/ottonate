@@ -103,19 +103,6 @@ async def attention_queue(request: Request) -> list[dict]:
     return items
 
 
-@router.get("/metrics")
-async def metrics(request: Request, days: int | None = None) -> dict:
-    store = request.app.state.metrics
-    throughput = await store.get_throughput_stats(days)
-    stage_stats = await store.get_stage_stats(days)
-    completions = await store.get_recent_completions(days)
-    return {
-        "throughput": throughput,
-        "stage_stats": stage_stats,
-        "recent_completions": completions[:20],
-    }
-
-
 class UnstickRequest(BaseModel):
     target_stage: str
 
