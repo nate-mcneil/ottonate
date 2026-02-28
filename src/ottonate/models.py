@@ -21,6 +21,7 @@ class Label(StrEnum):
     BACKLOG_REVIEW = "agentBacklogReview"
     # -- Idea pipeline (Step 0) --
     IDEA_TRIAGE = "agentIdeaTriage"
+    IDEA_PENDING = "agentIdeaPending"
     IDEA_REVIEW = "agentIdeaReview"
     IDEA_REFINING = "agentIdeaRefining"
     # -- Dev planning & implementation --
@@ -41,6 +42,7 @@ class Label(StrEnum):
 STAGE_LABELS = set(Label)
 
 ACTIONABLE_LABELS = {
+    Label.IDEA_PENDING,
     Label.IDEA_REVIEW,
     Label.SPEC_REVIEW,
     Label.SPEC_APPROVED,
@@ -67,6 +69,7 @@ IN_PROGRESS_LABELS = {
 
 LABEL_COLORS: dict[str, str] = {
     Label.IDEA_TRIAGE.value: "fbca04",
+    Label.IDEA_PENDING.value: "c2e0c6",
     Label.IDEA_REVIEW.value: "0e8a16",
     Label.IDEA_REFINING.value: "d93f0b",
     Label.SPEC.value: "1d76db",

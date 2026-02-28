@@ -247,12 +247,18 @@ class TestHandleIdeaTriage:
             "testorg", "engineering", 7, Label.IDEA_TRIAGE.value
         )
         mock_github.create_issue.assert_called_once_with(
-            "testorg", "engineering", "My Feature", "Feature description", ["otto"]
+            "testorg", "engineering", "My Feature", "Feature description",
+            ["otto", "agentIdeaPending"],
         )
         assert idea_pr.linked_issue_number == 42
 
-        # Verify comment on PR
+        # Verify source PR comment on issue
         comment_calls = mock_github.add_comment.call_args_list
+        assert any(
+            c[0] == ("testorg", "engineering", 42, "Source idea PR: #7")
+            for c in comment_calls
+        )
+        # Verify comment on PR
         assert any("issue created: #42" in str(c) for c in comment_calls)
 
         mock_github.swap_pr_label.assert_called_with(
@@ -321,6 +327,67 @@ class TestHandleIdeaTriage:
         paths = [c[0][2] for c in calls]
         assert "ideas/my-feature/.gitkeep" not in paths
         assert "ideas/my-feature/notes.md" in paths
+
+
+class TestHandleIdeaPending:
+    @pytest.mark.asyncio
+    async def test_merged_pr_removes_pending_label(
+        self, pipeline, sample_ticket, sample_rules, mock_github
+    ):
+        sample_ticket.labels.add(Label.IDEA_PENDING.value)
+        mock_github.get_comments = AsyncMock(
+            return_value=["Source idea PR: #7"]
+        )
+        mock_github.get_pr_state = AsyncMock(return_value="MERGED")
+
+        await pipeline._handle_idea_pending(sample_ticket, sample_rules)
+
+        mock_github.remove_label.assert_called_once_with(
+            sample_ticket.owner, sample_ticket.repo,
+            sample_ticket.issue_number, Label.IDEA_PENDING.value,
+        )
+
+    @pytest.mark.asyncio
+    async def test_open_pr_is_noop(
+        self, pipeline, sample_ticket, sample_rules, mock_github
+    ):
+        sample_ticket.labels.add(Label.IDEA_PENDING.value)
+        mock_github.get_comments = AsyncMock(
+            return_value=["Source idea PR: #7"]
+        )
+        mock_github.get_pr_state = AsyncMock(return_value="OPEN")
+
+        await pipeline._handle_idea_pending(sample_ticket, sample_rules)
+
+        mock_github.remove_label.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_closed_pr_triggers_stuck(
+        self, pipeline, sample_ticket, sample_rules, mock_github
+    ):
+        sample_ticket.labels.add(Label.IDEA_PENDING.value)
+        mock_github.get_comments = AsyncMock(
+            return_value=["Source idea PR: #7"]
+        )
+        mock_github.get_pr_state = AsyncMock(return_value="CLOSED")
+
+        with patch.object(pipeline, "_stuck", new_callable=AsyncMock) as mock_stuck:
+            await pipeline._handle_idea_pending(sample_ticket, sample_rules)
+
+        mock_stuck.assert_called_once()
+        assert "closed without merging" in mock_stuck.call_args[0][2]
+
+    @pytest.mark.asyncio
+    async def test_no_pr_comment_is_noop(
+        self, pipeline, sample_ticket, sample_rules, mock_github
+    ):
+        sample_ticket.labels.add(Label.IDEA_PENDING.value)
+        mock_github.get_comments = AsyncMock(return_value=[])
+
+        await pipeline._handle_idea_pending(sample_ticket, sample_rules)
+
+        mock_github.get_pr_state.assert_not_called()
+        mock_github.remove_label.assert_not_called()
 
 
 class TestHandleIdeaReview:

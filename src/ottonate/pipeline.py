@@ -451,10 +451,14 @@ class Pipeline:
             else f"Generated from idea PR #{idea_pr.pr_number}."
         )
         issue_number = await self.github.create_issue(
-            owner, repo, issue_title, issue_body, [self.agent_label]
+            owner, repo, issue_title, issue_body, [self.agent_label, Label.IDEA_PENDING.value]
         )
         idea_pr.linked_issue_number = issue_number
 
+        await self.github.add_comment(
+            owner, repo, issue_number,
+            f"Source idea PR: #{idea_pr.pr_number}",
+        )
         await self.github.add_comment(
             owner, repo, idea_pr.pr_number,
             f"INTENT.md generated and issue created: #{issue_number}\n\n"
@@ -574,6 +578,7 @@ class Pipeline:
             return
 
         handler = {
+            Label.IDEA_PENDING: self._handle_idea_pending,
             Label.SPEC_REVIEW: self._handle_spec_review,
             Label.SPEC_APPROVED: self._handle_spec_approved,
             Label.BACKLOG_REVIEW: self._handle_backlog_review,
@@ -594,6 +599,36 @@ class Pipeline:
         except Exception:
             log.exception("stage_failed", issue=ticket.issue_ref, label=label)
             raise
+
+    # -- Idea pending gate --
+
+    async def _handle_idea_pending(self, ticket: Ticket, rules: ResolvedRules) -> None:
+        """agentIdeaPending: wait for linked idea PR to merge before starting spec."""
+        comments = await self.github.get_comments(
+            ticket.owner, ticket.repo, ticket.issue_number
+        )
+        idea_pr_number = None
+        for comment in reversed(comments):
+            match = re.search(r"Source idea PR: #(\d+)", comment)
+            if match:
+                idea_pr_number = int(match.group(1))
+                break
+
+        if idea_pr_number is None:
+            return
+
+        state = await self.github.get_pr_state(
+            ticket.owner, ticket.repo, idea_pr_number
+        )
+
+        if state == "MERGED":
+            await self.github.remove_label(
+                ticket.owner, ticket.repo, ticket.issue_number,
+                Label.IDEA_PENDING.value,
+            )
+            log.info("idea_pr_merged_unlocked", issue=ticket.issue_ref, pr=idea_pr_number)
+        elif state == "CLOSED":
+            await self._stuck(ticket, rules, f"Idea PR #{idea_pr_number} closed without merging")
 
     # -- Spec & backlog handlers --
 

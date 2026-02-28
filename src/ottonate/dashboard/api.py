@@ -12,6 +12,7 @@ router = APIRouter()
 PHASE_MAP: dict[str, str] = {
     Label.IDEA_TRIAGE.value: "ideation",
     Label.IDEA_REFINING.value: "ideation",
+    Label.IDEA_PENDING.value: "awaiting_human",
     Label.IDEA_REVIEW.value: "awaiting_human",
     Label.SPEC.value: "planning",
     Label.PLANNING.value: "planning",
