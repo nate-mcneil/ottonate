@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
 
 import structlog
 
-from ottonate.config import OttonateConfig
 from ottonate.github import GitHubClient
 
 log = structlog.get_logger()

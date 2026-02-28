@@ -406,9 +406,8 @@ class Pipeline:
         if not file_contents:
             await self.github.add_comment(
                 owner, repo, idea_pr.pr_number,
-                "No idea files found in `{}/{}/`. Add files and the agent will process them.".format(
-                    self.config.ideas_dir, idea_pr.project_name
-                ),
+                f"No idea files found in `{self.config.ideas_dir}/"
+                f"{idea_pr.project_name}/`. Add files and the agent will process them.",
             )
             await self.github.remove_pr_label(
                 owner, repo, idea_pr.pr_number, Label.IDEA_TRIAGE.value

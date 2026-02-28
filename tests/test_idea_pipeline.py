@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -9,7 +8,6 @@ from ottonate.models import IdeaPR, Label, StageResult
 from ottonate.pipeline import Pipeline, _extract_json_object
 from ottonate.prompts import idea_refine_prompt, idea_triage_prompt
 from ottonate.scheduler import _extract_project_name
-
 
 # -- Utilities --
 
@@ -316,7 +314,10 @@ class TestHandleIdeaTriage:
         mock_github.create_issue = AsyncMock(return_value=1)
 
         with (
-            patch.object(pipeline, "_run", return_value=_agent_result('[IDEA_COMPLETE]\n{"title":"T","body":"B"}')),
+            patch.object(
+                pipeline, "_run",
+                return_value=_agent_result('[IDEA_COMPLETE]\n{"title":"T","body":"B"}'),
+            ),
             patch.object(pipeline, "_ensure_idea_workspace", new_callable=AsyncMock),
             patch("ottonate.pipeline._git_commit_push_existing", new_callable=AsyncMock),
         ):
@@ -400,7 +401,8 @@ class TestHandleIdeaReview:
 
         mock_github.get_pr_details = AsyncMock(return_value={
             "comments": [
-                {"author": {"login": "test-bot"}, "body": "INTENT.md generated and issue created: #42"},
+                {"author": {"login": "test-bot"},
+                 "body": "INTENT.md generated and issue created: #42"},
                 {"author": {"login": "human"}, "body": "Please add caching support"},
             ],
         })
@@ -461,7 +463,10 @@ class TestHandleIdeaReview:
         mock_github.get_file_content = AsyncMock(return_value="# Intent")
 
         with (
-            patch.object(pipeline, "_run", return_value=_agent_result('{"title":"T","body":"B"}\n[REFINE_COMPLETE]')),
+            patch.object(
+                pipeline, "_run",
+                return_value=_agent_result('{"title":"T","body":"B"}\n[REFINE_COMPLETE]'),
+            ),
             patch.object(pipeline, "_ensure_idea_workspace", new_callable=AsyncMock),
             patch("ottonate.pipeline._git_commit_push_existing", new_callable=AsyncMock),
         ):
@@ -627,14 +632,20 @@ class TestGitCommitPushExisting:
     @pytest.mark.asyncio
     async def test_no_changes_is_noop(self, tmp_path):
         """When there are no staged changes, commit+push should be skipped."""
-        from ottonate.pipeline import _git_commit_push_existing
-
         # Create a git repo with a commit so there's a valid HEAD
         import subprocess
 
+        from ottonate.pipeline import _git_commit_push_existing
+
         subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=str(tmp_path), capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            cwd=str(tmp_path), capture_output=True,
+        )
         (tmp_path / "file.txt").write_text("content")
         subprocess.run(["git", "add", "-A"], cwd=str(tmp_path), capture_output=True)
         subprocess.run(["git", "commit", "-m", "init"], cwd=str(tmp_path), capture_output=True)

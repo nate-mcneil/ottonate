@@ -219,10 +219,16 @@ def setup() -> None:
                 click.echo("Keeping existing .env")
                 result.add(".env file", "kept")
             else:
-                write_env_file(env_path, org=org, repo=eng_repo, username=username, entry_label=entry_label)
+                write_env_file(
+                    env_path, org=org, repo=eng_repo,
+                    username=username, entry_label=entry_label,
+                )
                 result.add(".env file", "written")
         else:
-            write_env_file(env_path, org=org, repo=eng_repo, username=username, entry_label=entry_label)
+            write_env_file(
+                env_path, org=org, repo=eng_repo,
+                username=username, entry_label=entry_label,
+            )
             result.add(".env file", "written")
 
         # Step 7: Ensure labels
@@ -236,12 +242,12 @@ def setup() -> None:
         result.add("Agent definitions", f"{len(updated)} synced" if updated else "up to date")
 
         # Summary
-        click.echo(f"\n--- Setup Complete ---\n")
+        click.echo("\n--- Setup Complete ---\n")
         click.echo(result.summary())
-        click.echo(f"\nNext steps:")
-        click.echo(f"  ottonate run            # Start the scheduler daemon")
-        click.echo(f"  ottonate init-engineering  # Auto-populate architecture docs")
-        click.echo(f"  ottonate dashboard      # Open the web dashboard")
+        click.echo("\nNext steps:")
+        click.echo("  ottonate run            # Start the scheduler daemon")
+        click.echo("  ottonate init-engineering  # Auto-populate architecture docs")
+        click.echo("  ottonate dashboard      # Open the web dashboard")
         click.echo()
 
     asyncio.run(_setup())

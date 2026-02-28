@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -52,7 +50,10 @@ class TestDetectGhUser:
 class TestListUserOrgs:
     @pytest.mark.asyncio
     async def test_returns_parsed_org_list(self, github):
-        with patch("asyncio.create_subprocess_exec", return_value=_gh_result("appfire\nother-org\n")):
+        with patch(
+            "asyncio.create_subprocess_exec",
+            return_value=_gh_result("appfire\nother-org\n"),
+        ):
             result = await list_user_orgs(github)
         assert result == ["appfire", "other-org"]
 
@@ -89,7 +90,10 @@ class TestRepoIsEmpty:
 
     @pytest.mark.asyncio
     async def test_returns_false_on_success(self):
-        with patch("asyncio.create_subprocess_exec", return_value=_gh_result('[{"name":"README.md"}]')):
+        with patch(
+            "asyncio.create_subprocess_exec",
+            return_value=_gh_result('[{"name":"README.md"}]'),
+        ):
             assert await repo_is_empty("org", "eng") is False
 
 
@@ -129,7 +133,10 @@ class TestEnsureLabels:
 class TestWriteEnvFile:
     def test_writes_correct_content(self, tmp_path):
         env_path = tmp_path / ".env"
-        write_env_file(env_path, org="myorg", repo="engineering", username="nate", entry_label="otto")
+        write_env_file(
+            env_path, org="myorg", repo="engineering",
+            username="nate", entry_label="otto",
+        )
         content = env_path.read_text()
         assert "OTTONATE_GITHUB_ORG=myorg" in content
         assert "OTTONATE_GITHUB_ENGINEERING_REPO=engineering" in content
@@ -178,7 +185,8 @@ class TestInitEmptyRepo:
             result = await init_empty_repo("org", "eng")
 
         assert result is True
-        # 4 init commands (git init, config email, config name, credential helper) + 5 commit/push = 9
+        # 4 init commands (git init, config email, config name,
+        # credential helper) + 5 commit/push = 9
         assert len(calls) == 9
         # Verify key git commands were called
         flat_args = [" ".join(c) for c in calls]

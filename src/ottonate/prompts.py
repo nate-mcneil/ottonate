@@ -266,7 +266,8 @@ Update the INTENT.md based on the human feedback above.
 
 Write the updated file to `ideas/{idea_pr.project_name}/INTENT.md`.
 
-After writing the updated INTENT.md, output a JSON object on its own line with the updated GitHub issue content:
+After writing the updated INTENT.md, output a JSON object on its own line
+with the updated GitHub issue content:
 {{"title": "short issue title", "body": "updated issue body in markdown"}}
 
 End with `[REFINE_COMPLETE]` when done.
