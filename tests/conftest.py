@@ -6,7 +6,6 @@ import pytest
 
 from ottonate.config import OttonateConfig
 from ottonate.github import GitHubClient
-from ottonate.metrics import MetricsStore
 from ottonate.models import Ticket
 from ottonate.rules import ResolvedRules
 
@@ -33,16 +32,10 @@ def mock_github() -> AsyncMock:
     gh.get_issue_body = AsyncMock(return_value="# Test\n\nDescription")
     gh.get_issue = AsyncMock(return_value={"title": "Test issue", "labels": []})
     gh.get_issue_labels = AsyncMock(return_value=["otto"])
+    gh.get_issue_timeline = AsyncMock(return_value=[])
     gh.get_file_content = AsyncMock(return_value=None)
     gh.get_pr_state = AsyncMock(return_value="OPEN")
     return gh
-
-
-@pytest.fixture
-async def mock_metrics(tmp_path) -> MetricsStore:
-    store = MetricsStore(tmp_path / "test.db")
-    await store.init_db()
-    return store
 
 
 @pytest.fixture

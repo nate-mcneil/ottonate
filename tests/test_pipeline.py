@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from ottonate.metrics import IssueMetrics
 from ottonate.models import CIStatus, Label, ReviewStatus, StageResult, Ticket
 from ottonate.pipeline import (
     Pipeline,
@@ -17,8 +18,8 @@ from ottonate.pipeline import (
 
 
 @pytest.fixture
-def pipeline(config, mock_github, mock_metrics):
-    return Pipeline(config, mock_github, metrics=mock_metrics)
+def pipeline(config, mock_github):
+    return Pipeline(config, mock_github)
 
 
 def _agent_result(text: str = "", is_error: bool = False) -> StageResult:
@@ -341,43 +342,30 @@ class TestHandleMergeReady:
 
     @pytest.mark.asyncio
     async def test_merged_clean_removes_labels(
-        self, pipeline, sample_ticket, sample_rules, mock_github, mock_metrics
+        self, pipeline, sample_ticket, sample_rules, mock_github
     ):
         sample_ticket.pr_number = 10
         mock_github.get_pr_state = AsyncMock(return_value="MERGED")
 
-        await pipeline._handle_merge_ready(sample_ticket, sample_rules)
+        clean_metrics = IssueMetrics(issue_ref=sample_ticket.issue_ref)
+        with patch("ottonate.pipeline.build_issue_metrics", return_value=clean_metrics):
+            await pipeline._handle_merge_ready(sample_ticket, sample_rules)
+
         mock_github.remove_label.assert_any_call(
             "testorg", "test-repo", 42, Label.MERGE_READY.value
         )
 
     @pytest.mark.asyncio
     async def test_merged_with_retries_triggers_retro(
-        self, pipeline, sample_ticket, sample_rules, mock_github, mock_metrics
+        self, pipeline, sample_ticket, sample_rules, mock_github
     ):
         sample_ticket.pr_number = 10
         mock_github.get_pr_state = AsyncMock(return_value="MERGED")
 
-        await mock_metrics.record_stage(
-            sample_ticket.issue_ref,
-            "planning",
-            "otto-planner",
-            0.05,
-            10,
-            False,
-            0,
-        )
-        await mock_metrics.record_stage(
-            sample_ticket.issue_ref,
-            "planning",
-            "otto-planner",
-            0.03,
-            8,
-            False,
-            1,
-        )
+        retried_metrics = IssueMetrics(issue_ref=sample_ticket.issue_ref, total_retries=1)
+        with patch("ottonate.pipeline.build_issue_metrics", return_value=retried_metrics):
+            await pipeline._handle_merge_ready(sample_ticket, sample_rules)
 
-        await pipeline._handle_merge_ready(sample_ticket, sample_rules)
         mock_github.swap_label.assert_called_with(
             "testorg",
             "test-repo",
@@ -388,24 +376,19 @@ class TestHandleMergeReady:
 
     @pytest.mark.asyncio
     async def test_merged_with_stuck_triggers_retro(
-        self, pipeline, sample_ticket, sample_rules, mock_github, mock_metrics
+        self, pipeline, sample_ticket, sample_rules, mock_github
     ):
         sample_ticket.pr_number = 10
         mock_github.get_pr_state = AsyncMock(return_value="MERGED")
 
-        await mock_metrics.record_stage(
-            sample_ticket.issue_ref,
-            "implementing",
-            "otto-implementer",
-            1.0,
-            50,
-            True,
-            0,
+        stuck_metrics = IssueMetrics(
+            issue_ref=sample_ticket.issue_ref,
             was_stuck=True,
-            stuck_reason="CI blocked",
+            stuck_reasons=["CI blocked"],
         )
+        with patch("ottonate.pipeline.build_issue_metrics", return_value=stuck_metrics):
+            await pipeline._handle_merge_ready(sample_ticket, sample_rules)
 
-        await pipeline._handle_merge_ready(sample_ticket, sample_rules)
         mock_github.swap_label.assert_called_with(
             "testorg",
             "test-repo",
@@ -560,25 +543,18 @@ class TestGetPlan:
 class TestHandleRetro:
     @pytest.mark.asyncio
     async def test_runs_retro_agent(
-        self, pipeline, sample_ticket, sample_rules, mock_github, mock_metrics, tmp_path
+        self, pipeline, sample_ticket, sample_rules, mock_github, tmp_path
     ):
         sample_ticket.pr_number = 10
         sample_ticket.work_dir = str(tmp_path)
         mock_github.get_comments = AsyncMock(return_value=[])
 
-        await mock_metrics.record_stage(
-            sample_ticket.issue_ref,
-            "planning",
-            "otto-planner",
-            0.05,
-            10,
-            False,
-            1,
-        )
+        retried_metrics = IssueMetrics(issue_ref=sample_ticket.issue_ref, total_retries=1)
 
         with (
             patch.object(pipeline, "_run", return_value=_agent_result("[RETRO_COMPLETE]")),
             patch.object(pipeline, "_ensure_eng_workspace", new_callable=AsyncMock),
+            patch("ottonate.pipeline.build_issue_metrics", return_value=retried_metrics),
         ):
             pipeline._eng_workspace_path = lambda: tmp_path
             await pipeline._handle_retro(sample_ticket, sample_rules)
@@ -595,7 +571,7 @@ class TestHandleRetro:
 
     @pytest.mark.asyncio
     async def test_retro_files_self_improvement_issue(
-        self, pipeline, sample_ticket, sample_rules, mock_github, mock_metrics, tmp_path
+        self, pipeline, sample_ticket, sample_rules, mock_github, tmp_path
     ):
         sample_ticket.pr_number = 10
         sample_ticket.work_dir = str(tmp_path)
@@ -607,10 +583,12 @@ class TestHandleRetro:
             "[SELF_IMPROVEMENT]\n"
             '{"title": "Improve CI fixer prompt", "body": "The CI fixer should check lockfiles."}'
         )
+        retried_metrics = IssueMetrics(issue_ref=sample_ticket.issue_ref, total_retries=1)
 
         with (
             patch.object(pipeline, "_run", return_value=_agent_result(retro_text)),
             patch.object(pipeline, "_ensure_eng_workspace", new_callable=AsyncMock),
+            patch("ottonate.pipeline.build_issue_metrics", return_value=retried_metrics),
         ):
             pipeline._eng_workspace_path = lambda: tmp_path
             await pipeline._handle_retro(sample_ticket, sample_rules)

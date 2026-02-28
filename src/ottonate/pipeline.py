@@ -15,7 +15,7 @@ from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage
 from ottonate.config import OttonateConfig
 from ottonate.enrichment import EnrichedStory, enrich_story_prompt, parse_enriched_story
 from ottonate.github import GitHubClient
-from ottonate.metrics import MetricsStore
+from ottonate.metrics import build_issue_metrics
 from ottonate.models import (
     CIStatus,
     Label,
@@ -219,12 +219,10 @@ class Pipeline:
         self,
         config: OttonateConfig,
         github: GitHubClient,
-        metrics: MetricsStore | None = None,
         on_rate_limit: Callable[[], None] | None = None,
     ):
         self.config = config
         self.github = github
-        self.metrics = metrics
         self.agent_label = config.github_agent_label
         self.trace = TraceabilityGraph()
         self._on_rate_limit = on_rate_limit
@@ -236,9 +234,9 @@ class Pipeline:
         ticket_attempts[stage] = count
         return count <= max_retries
 
-    async def _record(
+    async def _post_stage_meta(
         self,
-        issue_ref: str,
+        ticket: Ticket,
         stage: str,
         agent: str | None,
         result: StageResult | None = None,
@@ -247,22 +245,21 @@ class Pipeline:
         was_stuck: bool = False,
         stuck_reason: str | None = None,
     ) -> None:
-        if not self.metrics:
-            return
+        meta = {
+            "stage": stage,
+            "agent": agent,
+            "cost_usd": result.cost_usd if result else 0.0,
+            "turns_used": result.turns_used if result else 0,
+            "is_error": result.is_error if result else False,
+            "retry_number": retry_number,
+            "was_stuck": was_stuck,
+            "stuck_reason": stuck_reason,
+        }
+        body = f"<!-- otto:{json.dumps(meta)} -->"
         try:
-            await self.metrics.record_stage(
-                issue_ref=issue_ref,
-                stage=stage,
-                agent=agent,
-                cost_usd=result.cost_usd if result else 0.0,
-                turns_used=result.turns_used if result else 0,
-                is_error=result.is_error if result else False,
-                retry_number=retry_number,
-                was_stuck=was_stuck,
-                stuck_reason=stuck_reason,
-            )
+            await self.github.add_comment(ticket.owner, ticket.repo, ticket.issue_number, body)
         except Exception:
-            log.warning("metrics_record_failed", issue=issue_ref, stage=stage)
+            log.warning("stage_meta_post_failed", issue=ticket.issue_ref, stage=stage)
 
     async def _run(self, agent_name: str, prompt: str, cwd: str) -> StageResult:
         return await run_agent(
@@ -333,7 +330,7 @@ class Pipeline:
         result = await self._run("otto-spec-agent", prompt, ticket.work_dir)
 
         log.info("spec_agent_done", issue=ticket.issue_ref, turns=result.turns_used)
-        await self._record(ticket.issue_ref, "spec", "otto-spec-agent", result)
+        await self._post_stage_meta(ticket, "spec", "otto-spec-agent", result)
 
         if "[SPEC_NEEDS_INPUT]" in result.text or result.is_error:
             await self._stuck(ticket, rules, "Spec agent needs more input or errored")
@@ -604,7 +601,7 @@ class Pipeline:
             result_len=len(result.text),
             result_preview=result.text[:200],
         )
-        await self._record(ticket.issue_ref, "planning", "otto-planner", result)
+        await self._post_stage_meta(ticket, "planning", "otto-planner", result)
 
         if "[NEEDS_MORE_INFO]" in result.text or result.is_error:
             await self._stuck(ticket, rules, "Planner needs more info or errored")
@@ -642,7 +639,7 @@ class Pipeline:
 
         verdict = _parse_quality_verdict(result.text)
         log.info("quality_gate_done", issue=ticket.issue_ref, verdict=verdict)
-        await self._record(ticket.issue_ref, "plan_review", "otto-quality-gate", result)
+        await self._post_stage_meta(ticket, "plan_review", "otto-quality-gate", result)
 
         if verdict == "pass":
             await self.github.swap_label(
@@ -715,7 +712,7 @@ class Pipeline:
             turns=result.turns_used,
             cost=result.cost_usd,
         )
-        await self._record(ticket.issue_ref, "implementing", "otto-implementer", result)
+        await self._post_stage_meta(ticket, "implementing", "otto-implementer", result)
 
         if "[IMPLEMENTATION_BLOCKED]" in result.text or result.is_error:
             if not self._check_retries(
@@ -794,7 +791,7 @@ class Pipeline:
             result = await self._run("otto-ci-fixer", prompt, ticket.work_dir)
 
             log.info("ci_fixer_done", issue=ticket.issue_ref, turns=result.turns_used)
-            await self._record(ticket.issue_ref, "ci_fix", "otto-ci-fixer", result)
+            await self._post_stage_meta(ticket, "ci_fix", "otto-ci-fixer", result)
 
             if "[CI_FIX_BLOCKED]" in result.text or result.is_error:
                 await self._stuck(ticket, rules, "CI fix blocked")
@@ -811,7 +808,7 @@ class Pipeline:
 
         verdict = _parse_review_verdict(result.text)
         log.info("self_review_done", issue=ticket.issue_ref, verdict=verdict)
-        await self._record(ticket.issue_ref, "self_review", "otto-reviewer", result)
+        await self._post_stage_meta(ticket, "self_review", "otto-reviewer", result)
 
         if verdict == "clean":
             await self.github.swap_label(
@@ -876,8 +873,8 @@ class Pipeline:
             result = await self._run("otto-review-responder", prompt, ticket.work_dir)
 
             log.info("review_responder_done", issue=ticket.issue_ref, turns=result.turns_used)
-            await self._record(
-                ticket.issue_ref, "addressing_review", "otto-review-responder", result
+            await self._post_stage_meta(
+                ticket, "addressing_review", "otto-review-responder", result
             )
 
             if "[REVIEW_ESCALATE]" in result.text:
@@ -912,23 +909,22 @@ class Pipeline:
             log.info("ticket_merge_ready_waiting", issue=ticket.issue_ref)
             return
 
-        if self.metrics:
-            summary = await self.metrics.get_issue_summary(ticket.issue_ref)
-            if summary.needs_retro:
-                log.info(
-                    "ticket_needs_retro",
-                    issue=ticket.issue_ref,
-                    retries=summary.total_retries,
-                    stuck=summary.was_stuck,
-                )
-                await self.github.swap_label(
-                    owner,
-                    repo,
-                    ticket.issue_number,
-                    Label.MERGE_READY,
-                    Label.RETRO,
-                )
-                return
+        summary = await build_issue_metrics(self.github, owner, repo, ticket.issue_number)
+        if summary.needs_retro:
+            log.info(
+                "ticket_needs_retro",
+                issue=ticket.issue_ref,
+                retries=summary.total_retries,
+                stuck=summary.was_stuck,
+            )
+            await self.github.swap_label(
+                owner,
+                repo,
+                ticket.issue_number,
+                Label.MERGE_READY,
+                Label.RETRO,
+            )
+            return
 
         await self.github.remove_label(owner, repo, ticket.issue_number, Label.MERGE_READY.value)
         await self.github.remove_label(owner, repo, ticket.issue_number, self.agent_label)
@@ -937,11 +933,7 @@ class Pipeline:
     async def _handle_retro(self, ticket: Ticket, rules: ResolvedRules) -> None:
         """agentRetro: run a retrospective on a completed issue."""
         owner, repo = ticket.owner, ticket.repo
-        summary = await self.metrics.get_issue_summary(ticket.issue_ref) if self.metrics else None
-        if not summary:
-            from ottonate.metrics import IssueMetrics
-
-            summary = IssueMetrics(issue_ref=ticket.issue_ref)
+        summary = await build_issue_metrics(self.github, owner, repo, ticket.issue_number)
 
         plan = ticket.plan or await self._get_plan(ticket)
         comments = await self.github.get_comments(owner, repo, ticket.issue_number)
@@ -959,7 +951,7 @@ class Pipeline:
         await self._ensure_eng_workspace()
 
         result = await self._run("otto-retro", prompt, str(eng_dir))
-        await self._record(ticket.issue_ref, "retro", "otto-retro", result)
+        await self._post_stage_meta(ticket, "retro", "otto-retro", result)
 
         if "[SELF_IMPROVEMENT]" in result.text:
             improvement = _parse_self_improvement(result.text)
@@ -1014,13 +1006,16 @@ class Pipeline:
 
     async def _stuck(self, ticket: Ticket, rules: ResolvedRules, reason: str) -> None:
         log.warning("ticket_stuck", issue=ticket.issue_ref, reason=reason)
-        await self._record(
-            ticket.issue_ref,
-            "stuck",
-            None,
-            was_stuck=True,
-            stuck_reason=reason,
-        )
+        meta = {
+            "stage": "stuck",
+            "agent": None,
+            "cost_usd": 0.0,
+            "turns_used": 0,
+            "is_error": False,
+            "retry_number": 0,
+            "was_stuck": True,
+            "stuck_reason": reason,
+        }
         current = ticket.agent_label
         if current:
             await self.github.swap_label(
@@ -1034,7 +1029,7 @@ class Pipeline:
             ticket.owner,
             ticket.repo,
             ticket.issue_number,
-            f"Ottonate agent stopped: {reason}",
+            f"<!-- otto:{json.dumps(meta)} -->\nOttonate agent stopped: {reason}",
         )
         if rules.notify_team:
             await self.github.mention_on_issue(
