@@ -10,7 +10,6 @@ import structlog
 
 from ottonate.config import OttonateConfig
 from ottonate.github import GitHubClient
-from ottonate.metrics import MetricsStore
 from ottonate.models import ACTIONABLE_LABELS, Ticket
 from ottonate.pipeline import Pipeline
 from ottonate.rules import load_rules
@@ -22,12 +21,10 @@ class Scheduler:
     def __init__(self, config: OttonateConfig):
         self.config = config
         self.github = GitHubClient()
-        self.metrics = MetricsStore(config.resolved_db_path())
         self._rate_limited_until: float = 0.0
         self.pipeline = Pipeline(
             config,
             self.github,
-            metrics=self.metrics,
             on_rate_limit=self._signal_rate_limit,
         )
         self._semaphore = asyncio.Semaphore(config.max_concurrent_tickets)
@@ -35,7 +32,6 @@ class Scheduler:
         self._in_flight: set[str] = set()
 
     async def start(self) -> None:
-        await self.metrics.init_db()
         log.info("scheduler_started", max_concurrent=self.config.max_concurrent_tickets)
         try:
             await self._poll_loop()
