@@ -1,6 +1,10 @@
 # Ottonate
 
-**Drop an idea. Get a reviewed, CI-green PR.**
+**Automate from napkin to pull request.**
+
+<p align="center">
+  <img src="assets/ottonate-pipeline.png" alt="Ottonate: Ideas in, merged PRs out" width="700">
+</p>
 
 Ottonate is an autonomous dev pipeline that turns raw product ideas into merged pull requests. Nine Claude agents handle triage, planning, implementation, CI fixes, code review, and post-merge retrospectives. Humans stay in control at five explicit gates: idea review, spec review, backlog review, code review, and merge.
 
