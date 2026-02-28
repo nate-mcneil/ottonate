@@ -30,8 +30,8 @@ def idea_pr() -> IdeaPR:
 
 
 @pytest.fixture
-def pipeline(config, mock_github, mock_metrics):
-    return Pipeline(config, mock_github, metrics=mock_metrics)
+def pipeline(config, mock_github):
+    return Pipeline(config, mock_github)
 
 
 # -- _extract_project_name --
@@ -484,11 +484,7 @@ class TestSchedulerIdeaPolling:
     async def test_poll_detects_idea_prs(self, config):
         from ottonate.scheduler import Scheduler
 
-        with (
-            patch("ottonate.scheduler.GitHubClient") as mock_gh_cls,
-            patch("ottonate.scheduler.MetricsStore") as mock_metrics_cls,
-        ):
-            mock_metrics_cls.return_value.init_db = AsyncMock()
+        with patch("ottonate.scheduler.GitHubClient") as mock_gh_cls:
             scheduler = Scheduler(config)
             scheduler.github = mock_gh_cls.return_value
             scheduler.pipeline = AsyncMock()
@@ -517,11 +513,7 @@ class TestSchedulerIdeaPolling:
     async def test_poll_skips_in_progress_labels(self, config):
         from ottonate.scheduler import Scheduler
 
-        with (
-            patch("ottonate.scheduler.GitHubClient") as mock_gh_cls,
-            patch("ottonate.scheduler.MetricsStore") as mock_metrics_cls,
-        ):
-            mock_metrics_cls.return_value.init_db = AsyncMock()
+        with patch("ottonate.scheduler.GitHubClient") as mock_gh_cls:
             scheduler = Scheduler(config)
             scheduler.github = mock_gh_cls.return_value
             scheduler.pipeline = AsyncMock()
@@ -545,11 +537,7 @@ class TestSchedulerIdeaPolling:
         from ottonate.scheduler import Scheduler
 
         config.idea_poll_enabled = False
-        with (
-            patch("ottonate.scheduler.GitHubClient") as mock_gh_cls,
-            patch("ottonate.scheduler.MetricsStore") as mock_metrics_cls,
-        ):
-            mock_metrics_cls.return_value.init_db = AsyncMock()
+        with patch("ottonate.scheduler.GitHubClient") as mock_gh_cls:
             scheduler = Scheduler(config)
             scheduler.github = mock_gh_cls.return_value
 
@@ -561,11 +549,7 @@ class TestSchedulerIdeaPolling:
     async def test_poll_ignores_non_idea_prs(self, config):
         from ottonate.scheduler import Scheduler
 
-        with (
-            patch("ottonate.scheduler.GitHubClient") as mock_gh_cls,
-            patch("ottonate.scheduler.MetricsStore") as mock_metrics_cls,
-        ):
-            mock_metrics_cls.return_value.init_db = AsyncMock()
+        with patch("ottonate.scheduler.GitHubClient") as mock_gh_cls:
             scheduler = Scheduler(config)
             scheduler.github = mock_gh_cls.return_value
             scheduler.pipeline = AsyncMock()

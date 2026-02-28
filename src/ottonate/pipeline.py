@@ -424,7 +424,6 @@ class Pipeline:
 
         result = await self._run("otto-idea-agent", prompt, work_dir)
         log.info("idea_triage_done", pr=idea_pr.pr_ref, turns=result.turns_used)
-        await self._record(idea_pr.pr_ref, "idea_triage", "otto-idea-agent", result)
 
         if "[IDEA_NEEDS_INPUT]" in result.text or result.is_error:
             await self.github.add_comment(
@@ -524,7 +523,6 @@ class Pipeline:
 
         result = await self._run("otto-idea-agent", prompt, work_dir)
         log.info("idea_refine_done", pr=idea_pr.pr_ref, turns=result.turns_used)
-        await self._record(idea_pr.pr_ref, "idea_refine", "otto-idea-agent", result)
 
         # Push updated INTENT.md
         await _git_commit_push_existing(
