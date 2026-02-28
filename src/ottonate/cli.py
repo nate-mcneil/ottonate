@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from pathlib import Path
 
 import click
 import structlog
@@ -139,6 +140,111 @@ def process_idea(pr_ref: str) -> None:
         click.echo("Done.")
 
     asyncio.run(_process())
+
+
+@main.command()
+def setup() -> None:
+    """Interactive onboarding: configure .env, create labels, scaffold engineering repo."""
+    from ottonate.agents import sync_agent_definitions
+    from ottonate.github import GitHubClient
+    from ottonate.setup import (
+        SetupResult,
+        create_repo,
+        detect_gh_user,
+        ensure_labels,
+        init_empty_repo,
+        list_user_orgs,
+        repo_exists,
+        repo_is_empty,
+        write_env_file,
+    )
+
+    github = GitHubClient()
+    result = SetupResult()
+    env_path = Path(".env")
+
+    async def _setup() -> None:
+        # Step 1: Detect GitHub auth
+        click.echo("\n--- Ottonate Setup ---\n")
+        username = await detect_gh_user(github)
+        if not username:
+            click.echo("Error: Not authenticated with gh CLI. Run 'gh auth login' first.")
+            return
+        click.echo(f"Authenticated as: {username}")
+        result.add("GitHub auth", "OK")
+
+        # Step 2: Choose org
+        orgs = await list_user_orgs(github)
+        choices = [username] + [o for o in orgs if o != username]
+        click.echo("\nAvailable owners:")
+        for i, c in enumerate(choices, 1):
+            click.echo(f"  {i}. {c}")
+        pick = click.prompt("Select owner for engineering repo", type=int, default=1)
+        org = choices[min(pick, len(choices)) - 1]
+        click.echo(f"Using: {org}")
+
+        # Step 3: Engineering repo
+        eng_repo = click.prompt("Engineering repo name", default="engineering")
+        exists = await repo_exists(org, eng_repo)
+        if not exists:
+            if click.confirm(f"Repo {org}/{eng_repo} does not exist. Create it?", default=True):
+                ok = await create_repo(org, eng_repo)
+                if ok:
+                    result.add(f"Create {org}/{eng_repo}", "OK")
+                else:
+                    click.echo("Failed to create repo. Create it manually and re-run setup.")
+                    return
+            else:
+                click.echo("Setup cancelled. Create the repo and re-run.")
+                return
+
+        # Step 4: Initialize empty repo
+        if await repo_is_empty(org, eng_repo):
+            click.echo(f"Repo {org}/{eng_repo} is empty, initializing scaffold...")
+            ok = await init_empty_repo(org, eng_repo)
+            if ok:
+                result.add("Scaffold engineering repo", "OK")
+            else:
+                click.echo("Failed to initialize repo.")
+                return
+        else:
+            result.add("Engineering repo", "exists")
+
+        # Step 5: Entry label
+        entry_label = click.prompt("Entry label for agent issues", default="otto")
+
+        # Step 6: Write .env
+        if env_path.exists():
+            if not click.confirm(".env already exists. Overwrite?", default=False):
+                click.echo("Keeping existing .env")
+                result.add(".env file", "kept")
+            else:
+                write_env_file(env_path, org=org, repo=eng_repo, username=username, entry_label=entry_label)
+                result.add(".env file", "written")
+        else:
+            write_env_file(env_path, org=org, repo=eng_repo, username=username, entry_label=entry_label)
+            result.add(".env file", "written")
+
+        # Step 7: Ensure labels
+        click.echo(f"\nCreating pipeline labels in {org}/{eng_repo}...")
+        count = await ensure_labels(github, org, eng_repo, entry_label)
+        result.add("Pipeline labels", f"{count} created" if count else "all exist")
+
+        # Step 8: Sync agents
+        click.echo("Syncing agent definitions...")
+        updated = sync_agent_definitions()
+        result.add("Agent definitions", f"{len(updated)} synced" if updated else "up to date")
+
+        # Summary
+        click.echo(f"\n--- Setup Complete ---\n")
+        click.echo(result.summary())
+        click.echo(f"\nNext steps:")
+        click.echo(f"  ottonate run            # Start the scheduler daemon")
+        click.echo(f"  ottonate init-engineering  # Auto-populate architecture docs")
+        click.echo(f"  ottonate dashboard      # Open the web dashboard")
+        click.echo()
+
+    asyncio.run(_setup())
 
 
 @main.command("sync-agents")
