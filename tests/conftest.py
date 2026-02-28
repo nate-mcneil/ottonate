@@ -35,6 +35,15 @@ def mock_github() -> AsyncMock:
     gh.get_issue_timeline = AsyncMock(return_value=[])
     gh.get_file_content = AsyncMock(return_value=None)
     gh.get_pr_state = AsyncMock(return_value="OPEN")
+    gh.ensure_labels = AsyncMock(return_value=[])
+    gh.get_pr_details = AsyncMock(return_value={})
+    gh.get_pr_files = AsyncMock(return_value=[])
+    gh.get_directory_contents = AsyncMock(return_value=[])
+    gh.add_pr_label = AsyncMock()
+    gh.remove_pr_label = AsyncMock()
+    gh.swap_pr_label = AsyncMock()
+    gh.edit_issue_body = AsyncMock()
+    gh.list_open_prs = AsyncMock(return_value=[])
     return gh
 
 

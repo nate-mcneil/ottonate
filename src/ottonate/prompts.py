@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ottonate.metrics import IssueMetrics
-from ottonate.models import ReviewComment, Ticket
+from ottonate.models import IdeaPR, ReviewComment, Ticket
 
 
 def _rules_section(rules_context: str) -> str:
@@ -201,4 +201,74 @@ def retro_prompt(
 {comment_lines}
 {rules}
 Analyze what went wrong and propose improvements to the engineering repo.
+"""
+
+
+# -- Idea pipeline (Step 0) --
+
+
+def idea_triage_prompt(
+    idea_pr: IdeaPR, file_contents: dict[str, str], *, rules_context: str = ""
+) -> str:
+    rules = _rules_section(rules_context)
+    files_section = "\n\n".join(
+        f"### File: `{name}`\n```\n{content}\n```" for name, content in file_contents.items()
+    )
+    return f"""## Idea PR: {idea_pr.pr_ref}
+
+### Project Name
+{idea_pr.project_name}
+
+### Source Files
+{files_section}
+{rules}
+Synthesize these idea files into a structured INTENT.md document.
+
+Write the file `ideas/{idea_pr.project_name}/INTENT.md` with these sections:
+- **Problem Statement**: What problem does this idea solve?
+- **Proposed Solution**: High-level approach
+- **Key Requirements**: Numbered list of must-haves
+- **Technical Considerations**: Architecture, constraints, trade-offs
+- **Open Questions**: Anything that needs human input
+- **Source Files**: List of original idea files used
+
+After writing INTENT.md, output a JSON object on its own line with the GitHub issue content:
+{{"title": "short issue title", "body": "issue body in markdown"}}
+
+End with `[IDEA_COMPLETE]` if you produced a full intent document.
+End with `[IDEA_NEEDS_INPUT]` if critical information is missing.
+"""
+
+
+def idea_refine_prompt(
+    idea_pr: IdeaPR,
+    current_intent: str,
+    new_comments: list[str],
+    *,
+    rules_context: str = "",
+) -> str:
+    rules = _rules_section(rules_context)
+    comments_section = "\n\n".join(
+        f"**Comment {i + 1}:**\n{comment}" for i, comment in enumerate(new_comments)
+    )
+    return f"""## Idea PR: {idea_pr.pr_ref} (Refinement)
+
+### Project Name
+{idea_pr.project_name}
+
+### Current INTENT.md
+{current_intent}
+
+### New Human Comments
+{comments_section}
+{rules}
+Update the INTENT.md based on the human feedback above.
+
+Write the updated file to `ideas/{idea_pr.project_name}/INTENT.md`.
+
+After writing the updated INTENT.md, output a JSON object on its own line
+with the updated GitHub issue content:
+{{"title": "short issue title", "body": "updated issue body in markdown"}}
+
+End with `[REFINE_COMPLETE]` when done.
 """

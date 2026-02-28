@@ -10,7 +10,7 @@ import structlog
 
 from ottonate.config import OttonateConfig
 from ottonate.github import GitHubClient
-from ottonate.models import ACTIONABLE_LABELS, Ticket
+from ottonate.models import ACTIONABLE_LABELS, IdeaPR, Label, Ticket
 from ottonate.pipeline import Pipeline
 from ottonate.rules import load_rules
 
@@ -134,6 +134,8 @@ class Scheduler:
             elif stage in ACTIONABLE_LABELS:
                 asyncio.create_task(self._handle_with_semaphore(ticket))
 
+        await self._poll_idea_prs(org)
+
     async def _handle_with_semaphore(self, ticket: Ticket, *, new_ticket: bool = False) -> None:
         flight_key = ticket.issue_ref
         self._in_flight.add(flight_key)
@@ -147,6 +149,97 @@ class Scheduler:
                     await self.pipeline.handle(ticket, rules)
         except Exception:
             log.exception("handle_error", issue=ticket.issue_ref)
+        finally:
+            self._in_flight.discard(flight_key)
+
+    # -- Idea PR polling --
+
+    async def _poll_idea_prs(self, org: str) -> None:
+        if not self.config.idea_poll_enabled:
+            return
+
+        repo = self.config.github_engineering_repo
+        try:
+            prs = await self.github.list_open_prs(org, repo)
+        except Exception:
+            log.exception("idea_pr_poll_error")
+            return
+
+        ideas_dir = self.config.ideas_dir
+        idea_label_values = {
+            Label.IDEA_TRIAGE.value,
+            Label.IDEA_REVIEW.value,
+            Label.IDEA_REFINING.value,
+        }
+
+        for pr in prs:
+            pr_number = pr.get("number")
+            if not pr_number:
+                continue
+
+            flight_key = f"idea:{org}/{repo}#{pr_number}"
+            if flight_key in self._in_flight:
+                continue
+
+            pr_labels = {
+                lbl.get("name", "") if isinstance(lbl, dict) else str(lbl)
+                for lbl in pr.get("labels", [])
+            }
+
+            has_idea_label = bool(pr_labels & idea_label_values)
+
+            # Skip in-progress (agent is already working)
+            if Label.IDEA_TRIAGE.value in pr_labels or Label.IDEA_REFINING.value in pr_labels:
+                continue
+
+            if not has_idea_label:
+                # Check if PR touches idea files
+                try:
+                    pr_files = await self.github.get_pr_files(org, repo, pr_number)
+                except Exception:
+                    log.warning("idea_pr_files_error", pr=pr_number)
+                    continue
+                touches_ideas = any(
+                    f.get("filename", "").startswith(f"{ideas_dir}/") for f in pr_files
+                )
+                if not touches_ideas:
+                    continue
+
+                project_name = _extract_project_name(pr_files, ideas_dir)
+            else:
+                # Has idea label, extract project name from PR files
+                try:
+                    pr_files = await self.github.get_pr_files(org, repo, pr_number)
+                except Exception:
+                    log.warning("idea_pr_files_error", pr=pr_number)
+                    continue
+                project_name = _extract_project_name(pr_files, ideas_dir)
+
+            if not project_name:
+                continue
+
+            idea_pr = IdeaPR(
+                owner=org,
+                repo=repo,
+                pr_number=pr_number,
+                branch=pr.get("headRefName", ""),
+                labels=pr_labels,
+                title=pr.get("title", ""),
+                project_name=project_name,
+            )
+            asyncio.create_task(self._handle_idea_with_semaphore(idea_pr))
+
+    async def _handle_idea_with_semaphore(self, idea_pr: IdeaPR) -> None:
+        flight_key = f"idea:{idea_pr.pr_ref}"
+        self._in_flight.add(flight_key)
+        try:
+            async with self._semaphore:
+                rules = await load_rules(
+                    idea_pr.owner, idea_pr.repo, self.config, self.github
+                )
+                await self.pipeline.handle_idea_pr(idea_pr, rules)
+        except Exception:
+            log.exception("idea_handle_error", pr=idea_pr.pr_ref)
         finally:
             self._in_flight.discard(flight_key)
 
@@ -175,3 +268,16 @@ class Scheduler:
             log.error("clone_failed", repo=ticket.full_repo, stderr=stderr.decode())
             raise RuntimeError(f"Failed to clone {ticket.full_repo}")
         log.info("workspace_created", repo=ticket.full_repo, path=ticket.work_dir)
+
+
+def _extract_project_name(pr_files: list[dict], ideas_dir: str) -> str:
+    """Extract the project name from PR file paths (first directory segment after ideas_dir/)."""
+    prefix = f"{ideas_dir}/"
+    for f in pr_files:
+        filename = f.get("filename", "")
+        if filename.startswith(prefix):
+            rest = filename[len(prefix) :]
+            parts = rest.split("/")
+            if parts and parts[0]:
+                return parts[0]
+    return ""

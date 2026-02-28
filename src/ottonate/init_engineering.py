@@ -183,6 +183,7 @@ def _scaffold(work_dir: Path) -> None:
         work_dir / "architecture",
         work_dir / "specs",
         work_dir / "decisions",
+        work_dir / "ideas",
         work_dir / ".ottonate",
     ]
     for d in dirs:
@@ -193,6 +194,7 @@ def _scaffold(work_dir: Path) -> None:
         work_dir / "architecture" / "repos.md": _REPOS_TEMPLATE,
         work_dir / "specs" / ".gitkeep": "",
         work_dir / "decisions" / ".gitkeep": "",
+        work_dir / "ideas" / ".gitkeep": "",
         work_dir / ".ottonate" / "config.yml": _DEFAULT_CONFIG_YML,
         work_dir / ".ottonate" / "rules.md": _DEFAULT_RULES_MD,
     }

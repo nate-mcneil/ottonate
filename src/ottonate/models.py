@@ -19,6 +19,11 @@ class Label(StrEnum):
     SPEC_APPROVED = "agentSpecApproved"
     BACKLOG_GEN = "agentBacklogGen"
     BACKLOG_REVIEW = "agentBacklogReview"
+    # -- Idea pipeline (Step 0) --
+    IDEA_TRIAGE = "agentIdeaTriage"
+    IDEA_PENDING = "agentIdeaPending"
+    IDEA_REVIEW = "agentIdeaReview"
+    IDEA_REFINING = "agentIdeaRefining"
     # -- Dev planning & implementation --
     PLANNING = "agentPlanning"
     PLAN_REVIEW = "agentPlanReview"
@@ -37,6 +42,8 @@ class Label(StrEnum):
 STAGE_LABELS = set(Label)
 
 ACTIONABLE_LABELS = {
+    Label.IDEA_PENDING,
+    Label.IDEA_REVIEW,
     Label.SPEC_REVIEW,
     Label.SPEC_APPROVED,
     Label.BACKLOG_REVIEW,
@@ -49,6 +56,8 @@ ACTIONABLE_LABELS = {
 }
 
 IN_PROGRESS_LABELS = {
+    Label.IDEA_TRIAGE,
+    Label.IDEA_REFINING,
     Label.SPEC,
     Label.BACKLOG_GEN,
     Label.PLANNING,
@@ -56,6 +65,30 @@ IN_PROGRESS_LABELS = {
     Label.CI_FIX,
     Label.ADDRESSING_REVIEW,
     Label.RETRO,
+}
+
+LABEL_COLORS: dict[str, str] = {
+    Label.IDEA_TRIAGE.value: "fbca04",
+    Label.IDEA_PENDING.value: "c2e0c6",
+    Label.IDEA_REVIEW.value: "0e8a16",
+    Label.IDEA_REFINING.value: "d93f0b",
+    Label.SPEC.value: "1d76db",
+    Label.SPEC_REVIEW.value: "0e8a16",
+    Label.SPEC_APPROVED.value: "0e8a16",
+    Label.BACKLOG_GEN.value: "1d76db",
+    Label.BACKLOG_REVIEW.value: "0e8a16",
+    Label.PLANNING.value: "1d76db",
+    Label.PLAN_REVIEW.value: "1d76db",
+    Label.PLAN.value: "1d76db",
+    Label.IMPLEMENTING.value: "6f42c1",
+    Label.PR.value: "6f42c1",
+    Label.CI_FIX.value: "d93f0b",
+    Label.SELF_REVIEW.value: "6f42c1",
+    Label.REVIEW.value: "0e8a16",
+    Label.ADDRESSING_REVIEW.value: "d93f0b",
+    Label.MERGE_READY.value: "0e8a16",
+    Label.RETRO.value: "bfd4f2",
+    Label.STUCK.value: "e4e669",
 }
 
 
@@ -86,6 +119,35 @@ class Ticket:
     @property
     def agent_label(self) -> Label | None:
         for label in STAGE_LABELS:
+            if label.value in self.labels:
+                return label
+        return None
+
+
+@dataclass
+class IdeaPR:
+    """A GitHub pull request containing raw idea files."""
+
+    owner: str
+    repo: str
+    pr_number: int
+    branch: str
+    labels: set[str]
+    title: str = ""
+    project_name: str = ""
+    linked_issue_number: int | None = None
+
+    @property
+    def full_repo(self) -> str:
+        return f"{self.owner}/{self.repo}"
+
+    @property
+    def pr_ref(self) -> str:
+        return f"{self.full_repo}#{self.pr_number}"
+
+    @property
+    def idea_label(self) -> Label | None:
+        for label in (Label.IDEA_TRIAGE, Label.IDEA_REVIEW, Label.IDEA_REFINING):
             if label.value in self.labels:
                 return label
         return None

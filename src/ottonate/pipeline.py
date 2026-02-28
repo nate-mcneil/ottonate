@@ -17,7 +17,9 @@ from ottonate.enrichment import EnrichedStory, enrich_story_prompt, parse_enrich
 from ottonate.github import GitHubClient
 from ottonate.metrics import build_issue_metrics
 from ottonate.models import (
+    LABEL_COLORS,
     CIStatus,
+    IdeaPR,
     Label,
     ReviewStatus,
     StageResult,
@@ -26,6 +28,8 @@ from ottonate.models import (
 from ottonate.prompts import (
     backlog_prompt,
     ci_fixer_prompt,
+    idea_refine_prompt,
+    idea_triage_prompt,
     implementer_prompt,
     planner_prompt,
     quality_gate_prompt,
@@ -58,7 +62,7 @@ async def run_agent(
     max_delay: int = 600,
 ) -> StageResult:
     """Invoke a named agent defined in ~/.claude/agents/."""
-    env: dict[str, str] = {}
+    env: dict[str, str] = {"CLAUDECODE": ""}
     if config and config.use_bedrock:
         env["CLAUDE_CODE_USE_BEDROCK"] = "1"
         if config.aws_region:
@@ -211,6 +215,80 @@ async def _git_branch_commit_push(cwd: str, branch: str, message: str) -> None:
             raise RuntimeError(f"git command failed: {' '.join(cmd)}")
 
 
+async def _git_commit_push_existing(cwd: str, message: str) -> None:
+    """Stage all changes, commit, and push on the current branch.
+
+    If there are no changes to commit, this is a no-op.
+    """
+    # Stage
+    proc = await asyncio.create_subprocess_exec(
+        "git", "add", "-A",
+        cwd=cwd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await proc.communicate()
+
+    # Check if there are staged changes
+    proc = await asyncio.create_subprocess_exec(
+        "git", "diff", "--cached", "--quiet",
+        cwd=cwd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await proc.communicate()
+    if proc.returncode == 0:
+        log.info("git_no_changes", cwd=cwd)
+        return
+
+    # Commit and push
+    for cmd in [
+        ["git", "commit", "-m", message],
+        ["git", "push"],
+    ]:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            log.error("git_command_failed", cmd=cmd, stderr=stderr.decode())
+            raise RuntimeError(f"git command failed: {' '.join(cmd)}")
+
+
+async def _git_checkout_existing_branch(cwd: str, branch: str) -> None:
+    """Fetch and checkout an existing remote branch."""
+    for cmd in [
+        ["git", "fetch", "origin", branch],
+        ["git", "checkout", branch],
+    ]:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            log.error("git_command_failed", cmd=cmd, stderr=stderr.decode())
+            raise RuntimeError(f"git command failed: {' '.join(cmd)}")
+
+
+def _extract_json_object(text: str) -> dict | None:
+    """Extract the last JSON object with 'title' and 'body' keys from text."""
+    result = None
+    for match in re.finditer(r"\{[^{}]*\}", text):
+        try:
+            data = json.loads(match.group())
+            if "title" in data and "body" in data:
+                result = data
+        except json.JSONDecodeError:
+            continue
+    return result
+
+
 # -- Pipeline --
 
 
@@ -272,17 +350,224 @@ class Pipeline:
             max_delay=self.config.rate_limit_max_delay_s,
         )
 
+    async def ensure_pipeline_labels(self, owner: str, repo: str) -> None:
+        """Create any missing pipeline labels in the repo (idempotent)."""
+        all_labels = dict(LABEL_COLORS)
+        all_labels[self.agent_label] = "6f42c1"
+        await self.github.ensure_labels(owner, repo, all_labels)
+
     async def handle_new(self, ticket: Ticket, rules: ResolvedRules) -> None:
         """Handle a newly discovered issue (has entry label but no stage label).
 
         Issues in the engineering repo enter the spec path;
         everything else enters the dev planning path.
         """
+        await self.ensure_pipeline_labels(ticket.owner, ticket.repo)
         is_eng_repo = ticket.repo == self.config.github_engineering_repo
         if is_eng_repo:
             await self._handle_spec(ticket, rules)
         else:
             await self._handle_agent(ticket, rules)
+
+    # -- Idea pipeline (Step 0) --
+
+    async def handle_idea_pr(self, idea_pr: IdeaPR, rules: ResolvedRules) -> None:
+        """Route an idea PR to the appropriate handler based on its label."""
+        await self.ensure_pipeline_labels(idea_pr.owner, idea_pr.repo)
+        label = idea_pr.idea_label
+        if label == Label.IDEA_REVIEW:
+            await self._handle_idea_review(idea_pr, rules)
+        else:
+            await self._handle_idea_triage(idea_pr, rules)
+
+    async def _handle_idea_triage(self, idea_pr: IdeaPR, rules: ResolvedRules) -> None:
+        """Process a new idea PR: read files, generate INTENT.md, create issue."""
+        owner, repo = idea_pr.owner, idea_pr.repo
+
+        await self.github.add_pr_label(owner, repo, idea_pr.pr_number, Label.IDEA_TRIAGE.value)
+
+        # Read all files in the idea folder from the PR branch
+        dir_contents = await self.github.get_directory_contents(
+            owner, repo, f"{self.config.ideas_dir}/{idea_pr.project_name}", ref=idea_pr.branch
+        )
+        file_contents: dict[str, str] = {}
+        for entry in dir_contents:
+            if entry.get("type") != "file":
+                continue
+            name = entry.get("name", "")
+            if name.startswith("."):
+                continue
+            content = await self.github.get_file_content(
+                owner, repo, entry.get("path", ""), ref=idea_pr.branch
+            )
+            if content:
+                file_contents[name] = content
+
+        if not file_contents:
+            await self.github.add_comment(
+                owner, repo, idea_pr.pr_number,
+                f"No idea files found in `{self.config.ideas_dir}/"
+                f"{idea_pr.project_name}/`. Add files and the agent will process them.",
+            )
+            await self.github.remove_pr_label(
+                owner, repo, idea_pr.pr_number, Label.IDEA_TRIAGE.value
+            )
+            return
+
+        prompt = idea_triage_prompt(idea_pr, file_contents, rules_context=rules.agent_context)
+
+        # Clone workspace and checkout PR branch
+        work_dir = str(
+            self.config.resolved_workspace_dir() / f"idea_{owner}_{repo}_{idea_pr.pr_number}"
+        )
+        await self._ensure_idea_workspace(idea_pr, work_dir)
+
+        result = await self._run("otto-idea-agent", prompt, work_dir)
+        log.info("idea_triage_done", pr=idea_pr.pr_ref, turns=result.turns_used)
+
+        if "[IDEA_NEEDS_INPUT]" in result.text or result.is_error:
+            await self.github.add_comment(
+                owner, repo, idea_pr.pr_number,
+                "The idea agent needs more information. Please add details to the idea files.",
+            )
+            await self.github.swap_pr_label(
+                owner, repo, idea_pr.pr_number, Label.IDEA_TRIAGE, Label.IDEA_REVIEW
+            )
+            return
+
+        # Push INTENT.md to the PR branch
+        await _git_commit_push_existing(
+            work_dir, f"Add INTENT.md for {idea_pr.project_name}"
+        )
+
+        # Extract issue JSON from agent output and create GitHub issue
+        issue_data = _extract_json_object(result.text)
+        issue_title = issue_data["title"] if issue_data else f"Idea: {idea_pr.project_name}"
+        issue_body = (
+            issue_data["body"]
+            if issue_data
+            else f"Generated from idea PR #{idea_pr.pr_number}."
+        )
+        issue_number = await self.github.create_issue(
+            owner, repo, issue_title, issue_body, [self.agent_label, Label.IDEA_PENDING.value]
+        )
+        idea_pr.linked_issue_number = issue_number
+
+        await self.github.add_comment(
+            owner, repo, issue_number,
+            f"Source idea PR: #{idea_pr.pr_number}",
+        )
+        await self.github.add_comment(
+            owner, repo, idea_pr.pr_number,
+            f"INTENT.md generated and issue created: #{issue_number}\n\n"
+            f"Review the intent document. Leave comments to refine, or merge when satisfied.",
+        )
+        await self.github.swap_pr_label(
+            owner, repo, idea_pr.pr_number, Label.IDEA_TRIAGE, Label.IDEA_REVIEW
+        )
+
+    async def _handle_idea_review(self, idea_pr: IdeaPR, rules: ResolvedRules) -> None:
+        """Check for new human comments on an idea PR and refine if needed."""
+        owner, repo = idea_pr.owner, idea_pr.repo
+
+        details = await self.github.get_pr_details(owner, repo, idea_pr.pr_number)
+        comments = details.get("comments", [])
+
+        # Find the last bot comment and collect human comments after it
+        bot_username = self.config.github_username
+        last_bot_idx = -1
+        for i, c in enumerate(comments):
+            author = c.get("author", {}).get("login", "")
+            if author == bot_username:
+                last_bot_idx = i
+
+        new_human_comments: list[str] = []
+        for c in comments[last_bot_idx + 1 :]:
+            author = c.get("author", {}).get("login", "")
+            if author != bot_username:
+                body = c.get("body", "")
+                if body.strip():
+                    new_human_comments.append(body)
+
+        if not new_human_comments:
+            return
+
+        # Extract linked issue number from prior bot comments
+        if not idea_pr.linked_issue_number:
+            for c in reversed(comments):
+                author = c.get("author", {}).get("login", "")
+                if author == bot_username:
+                    match = re.search(r"issue created: #(\d+)", c.get("body", ""))
+                    if match:
+                        idea_pr.linked_issue_number = int(match.group(1))
+                        break
+
+        await self.github.swap_pr_label(
+            owner, repo, idea_pr.pr_number, Label.IDEA_REVIEW, Label.IDEA_REFINING
+        )
+
+        # Read current INTENT.md from PR branch
+        intent_path = f"{self.config.ideas_dir}/{idea_pr.project_name}/INTENT.md"
+        current_intent = await self.github.get_file_content(
+            owner, repo, intent_path, ref=idea_pr.branch
+        ) or ""
+
+        prompt = idea_refine_prompt(
+            idea_pr, current_intent, new_human_comments, rules_context=rules.agent_context
+        )
+
+        work_dir = str(
+            self.config.resolved_workspace_dir() / f"idea_{owner}_{repo}_{idea_pr.pr_number}"
+        )
+        await self._ensure_idea_workspace(idea_pr, work_dir)
+
+        result = await self._run("otto-idea-agent", prompt, work_dir)
+        log.info("idea_refine_done", pr=idea_pr.pr_ref, turns=result.turns_used)
+
+        # Push updated INTENT.md
+        await _git_commit_push_existing(
+            work_dir, f"Refine INTENT.md for {idea_pr.project_name}"
+        )
+
+        # Update linked issue body if we have the issue number
+        if idea_pr.linked_issue_number:
+            issue_data = _extract_json_object(result.text)
+            if issue_data:
+                await self.github.edit_issue_body(
+                    owner, repo, idea_pr.linked_issue_number, issue_data["body"]
+                )
+
+        await self.github.add_comment(
+            owner, repo, idea_pr.pr_number,
+            "INTENT.md refined based on feedback."
+            + (
+                f" Issue #{idea_pr.linked_issue_number} updated."
+                if idea_pr.linked_issue_number
+                else ""
+            ),
+        )
+        await self.github.swap_pr_label(
+            owner, repo, idea_pr.pr_number, Label.IDEA_REFINING, Label.IDEA_REVIEW
+        )
+
+    async def _ensure_idea_workspace(self, idea_pr: IdeaPR, work_dir: str) -> None:
+        """Clone the repo and checkout the PR branch for idea processing."""
+        path = Path(work_dir)
+        if path.exists():
+            await _git_checkout_existing_branch(work_dir, idea_pr.branch)
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        proc = await asyncio.create_subprocess_exec(
+            "gh", "repo", "clone", idea_pr.full_repo, work_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(f"Failed to clone {idea_pr.full_repo}: {stderr.decode()}")
+        await _git_checkout_existing_branch(work_dir, idea_pr.branch)
+
+    # -- Issue pipeline --
 
     async def handle(self, ticket: Ticket, rules: ResolvedRules) -> None:
         label = ticket.agent_label
@@ -290,6 +575,7 @@ class Pipeline:
             return
 
         handler = {
+            Label.IDEA_PENDING: self._handle_idea_pending,
             Label.SPEC_REVIEW: self._handle_spec_review,
             Label.SPEC_APPROVED: self._handle_spec_approved,
             Label.BACKLOG_REVIEW: self._handle_backlog_review,
@@ -310,6 +596,36 @@ class Pipeline:
         except Exception:
             log.exception("stage_failed", issue=ticket.issue_ref, label=label)
             raise
+
+    # -- Idea pending gate --
+
+    async def _handle_idea_pending(self, ticket: Ticket, rules: ResolvedRules) -> None:
+        """agentIdeaPending: wait for linked idea PR to merge before starting spec."""
+        comments = await self.github.get_comments(
+            ticket.owner, ticket.repo, ticket.issue_number
+        )
+        idea_pr_number = None
+        for comment in reversed(comments):
+            match = re.search(r"Source idea PR: #(\d+)", comment)
+            if match:
+                idea_pr_number = int(match.group(1))
+                break
+
+        if idea_pr_number is None:
+            return
+
+        state = await self.github.get_pr_state(
+            ticket.owner, ticket.repo, idea_pr_number
+        )
+
+        if state == "MERGED":
+            await self.github.remove_label(
+                ticket.owner, ticket.repo, ticket.issue_number,
+                Label.IDEA_PENDING.value,
+            )
+            log.info("idea_pr_merged_unlocked", issue=ticket.issue_ref, pr=idea_pr_number)
+        elif state == "CLOSED":
+            await self._stuck(ticket, rules, f"Idea PR #{idea_pr_number} closed without merging")
 
     # -- Spec & backlog handlers --
 
