@@ -10,15 +10,118 @@ repo are broken into stories across target repos.
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) package manager
 - [GitHub CLI](https://cli.github.com/) (`gh`) authenticated
-- Claude API access (or AWS Bedrock)
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`) installed and authenticated
+
+## Authentication
+
+Ottonate invokes Claude agents via the
+[Claude Agent SDK](https://docs.anthropic.com/en/docs/claude-code/sdk),
+which delegates to the `claude` CLI under the hood. It does not manage API keys
+itself; authentication is inherited from whatever the CLI is configured with.
+
+**Option A: Anthropic API (default)**
+
+Authenticate the Claude Code CLI with one of:
+
+```bash
+# Interactive OAuth login (opens browser)
+claude login
+
+# Or set an API key
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Verify with `claude --version` and a quick `claude -p "hello"` to confirm
+the CLI can reach the API.
+
+**Option B: AWS Bedrock**
+
+If your org routes Claude through Bedrock, set the following in `.env`:
+
+```
+OTTONATE_USE_BEDROCK=true
+OTTONATE_AWS_REGION=us-east-1
+OTTONATE_AWS_PROFILE=your-aws-profile    # optional, uses default chain if unset
+OTTONATE_BEDROCK_MODEL=us.anthropic.claude-sonnet-4-20250514
+```
+
+Standard AWS credential resolution applies (env vars, `~/.aws/credentials`,
+instance profile, etc.). The pipeline sets `CLAUDE_CODE_USE_BEDROCK=1` and
+passes through `AWS_REGION` and `AWS_PROFILE` to each agent invocation.
 
 ## Installation
 
 ```bash
-git clone https://github.com/your-org/ottonate.git
+git clone https://github.com/nate-mcneil/ottonate.git
 cd ottonate
 pip install -e ".[dev]"
 ```
+
+## Instructions for Agents
+
+If you are an AI agent (Claude Code, Cursor, Copilot, etc.) tasked with setting
+up ottonate for a user, follow these steps:
+
+1. **Clone and install**
+   ```bash
+   git clone https://github.com/nate-mcneil/ottonate.git
+   cd ottonate
+   pip install -e ".[dev]"
+   ```
+
+2. **Verify GitHub CLI auth**
+   ```bash
+   gh auth status
+   ```
+   If not authenticated, prompt the user to run `gh auth login` before
+   continuing.
+
+3. **Verify Claude Code CLI auth**
+   ```bash
+   claude --version
+   claude -p "hello"
+   ```
+   If the CLI is not installed, prompt the user to install it
+   (`npm install -g @anthropic-ai/claude-code`). If not authenticated,
+   prompt the user to run `claude login` or set `ANTHROPIC_API_KEY`.
+   For Bedrock setups, confirm AWS credentials are configured and set the
+   `OTTONATE_USE_BEDROCK` / `OTTONATE_AWS_*` vars in `.env` (see
+   Authentication section above).
+
+4. **Run interactive setup**
+   ```bash
+   ottonate setup
+   ```
+   This walks through an 8-step onboarding flow. You will need to respond to
+   prompts:
+   - **Owner selection** (numbered list): pick the org or personal account
+   - **Engineering repo name**: accept default `engineering` or enter a custom name
+   - **Repo creation confirm**: confirm `Y` if the repo does not exist yet
+   - **Entry label**: accept default `otto` or enter a custom label
+   - **.env overwrite**: confirm only if the user wants to replace an existing `.env`
+
+   The command creates the engineering repo, writes `.env`, provisions pipeline
+   labels, and syncs agent definitions.
+
+5. **Populate architecture docs**
+   ```bash
+   ottonate init-engineering
+   ```
+   This scans the org's repos and opens a PR to the engineering repo with
+   auto-discovered architecture documentation.
+
+6. **Start the pipeline**
+   ```bash
+   ottonate run
+   ```
+
+7. **Verify** by opening the dashboard:
+   ```bash
+   ottonate dashboard
+   ```
+
+After setup, the user can label any issue with `otto` (or their chosen entry
+label) to feed it into the pipeline.
 
 ## Usage
 
@@ -44,6 +147,9 @@ loaded by Pydantic settings from `.env`.
 | `OTTONATE_GITHUB_NOTIFY_TEAM` | Team/user to @mention on events | |
 | `OTTONATE_CLAUDE_MODEL` | Claude model to use | `sonnet` |
 | `OTTONATE_USE_BEDROCK` | Use AWS Bedrock instead of direct API | `false` |
+| `OTTONATE_AWS_REGION` | AWS region for Bedrock | |
+| `OTTONATE_AWS_PROFILE` | AWS credentials profile | |
+| `OTTONATE_BEDROCK_MODEL` | Bedrock model ID (e.g. `us.anthropic.claude-sonnet-4-20250514`) | |
 
 ## How It Works
 
