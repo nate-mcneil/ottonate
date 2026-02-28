@@ -607,11 +607,11 @@ class Pipeline:
             await self._stuck(ticket, rules, "Planner needs more info or errored")
             return
 
+        plan_text = _extract_plan(result.text)
+
         plan_file = Path(ticket.work_dir) / "PLAN.md"
         if plan_file.exists():
-            plan_text = plan_file.read_text().strip()
-        else:
-            plan_text = _extract_plan(result.text)
+            plan_file.unlink()
 
         if not plan_text:
             await self._stuck(ticket, rules, "Planner produced no plan output")
@@ -621,7 +621,7 @@ class Pipeline:
             ticket.owner,
             ticket.repo,
             ticket.issue_number,
-            "## Development Plan\n\nPlan committed to feature branch as PLAN.md",
+            f"## Development Plan\n\n{plan_text}",
         )
         ticket.plan = plan_text
         await self.github.swap_label(
@@ -670,15 +670,15 @@ class Pipeline:
             if "[NEEDS_MORE_INFO]" in result.text or result.is_error:
                 await self._stuck(ticket, rules, "Planner failed on retry")
                 return
+            revised_plan = _extract_plan(result.text) or result.text
             plan_file = Path(ticket.work_dir) / "PLAN.md" if ticket.work_dir else None
-            revised_plan = (
-                plan_file.read_text().strip() if plan_file and plan_file.exists() else result.text
-            )
+            if plan_file and plan_file.exists():
+                plan_file.unlink()
             await self.github.add_comment(
                 ticket.owner,
                 ticket.repo,
                 ticket.issue_number,
-                "## Development Plan (revised)\n\nRevised plan committed to branch as PLAN.md",
+                f"## Development Plan (revised)\n\n{revised_plan}",
             )
             ticket.plan = revised_plan
             await self.github.swap_label(
@@ -1041,9 +1041,6 @@ class Pipeline:
             )
 
     async def _get_plan(self, ticket: Ticket) -> str:
-        plan_file = Path(ticket.work_dir) / "PLAN.md" if ticket.work_dir else None
-        if plan_file and plan_file.exists():
-            return plan_file.read_text().strip()
         comments = await self.github.get_comments(ticket.owner, ticket.repo, ticket.issue_number)
         for comment in reversed(comments):
             marker = "## Development Plan"

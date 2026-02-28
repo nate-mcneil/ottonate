@@ -193,19 +193,39 @@ class TestHandleAgent:
         self, pipeline, sample_ticket, sample_rules, mock_github, tmp_path
     ):
         sample_ticket.work_dir = str(tmp_path)
-        plan_file = tmp_path / "PLAN.md"
-        plan_file.write_text("## Summary\nDo the thing")
 
-        with patch.object(pipeline, "_run", return_value=_agent_result("[PLAN_COMPLETE]")):
+        with patch.object(
+            pipeline,
+            "_run",
+            return_value=_agent_result("**Summary**\nDo the thing\n[PLAN_COMPLETE]"),
+        ):
             await pipeline._handle_agent(sample_ticket, sample_rules)
 
         mock_github.add_label.assert_any_call("testorg", "test-repo", 42, Label.PLANNING.value)
         mock_github.add_comment.assert_called()
         comment_body = mock_github.add_comment.call_args[0][3]
-        assert "Development Plan" in comment_body
+        assert "## Development Plan" in comment_body
+        assert "Do the thing" in comment_body
         mock_github.swap_label.assert_called_with(
             "testorg", "test-repo", 42, Label.PLANNING, Label.PLAN_REVIEW
         )
+
+    @pytest.mark.asyncio
+    async def test_planner_cleans_up_plan_file(
+        self, pipeline, sample_ticket, sample_rules, mock_github, tmp_path
+    ):
+        sample_ticket.work_dir = str(tmp_path)
+        plan_file = tmp_path / "PLAN.md"
+        plan_file.write_text("leftover plan")
+
+        with patch.object(
+            pipeline,
+            "_run",
+            return_value=_agent_result("**Summary**\nNew plan\n[PLAN_COMPLETE]"),
+        ):
+            await pipeline._handle_agent(sample_ticket, sample_rules)
+
+        assert not plan_file.exists()
 
     @pytest.mark.asyncio
     async def test_planner_needs_info(
@@ -497,20 +517,7 @@ class TestCreateStoriesFromBacklog:
 
 class TestGetPlan:
     @pytest.mark.asyncio
-    async def test_reads_from_file(self, pipeline, mock_github, tmp_path):
-        ticket = Ticket(
-            owner="testorg",
-            repo="test-repo",
-            issue_number=42,
-            labels=set(),
-            work_dir=str(tmp_path),
-        )
-        (tmp_path / "PLAN.md").write_text("Plan from file")
-        result = await pipeline._get_plan(ticket)
-        assert result == "Plan from file"
-
-    @pytest.mark.asyncio
-    async def test_falls_back_to_comments(self, pipeline, mock_github, tmp_path):
+    async def test_reads_from_comments(self, pipeline, mock_github, tmp_path):
         ticket = Ticket(
             owner="testorg",
             repo="test-repo",
