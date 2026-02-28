@@ -78,27 +78,6 @@ async def attention_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "attention.html", {"sections": sections, "org": org})
 
 
-@router.get("/metrics", response_class=HTMLResponse)
-async def metrics_page(request: Request, days: int | None = None) -> HTMLResponse:
-    templates = request.app.state.templates
-    store = request.app.state.metrics
-
-    throughput = await store.get_throughput_stats(days)
-    stage_stats = await store.get_stage_stats(days)
-    completions = await store.get_recent_completions(days)
-
-    return templates.TemplateResponse(
-        request,
-        "metrics.html",
-        {
-            "throughput": throughput,
-            "stage_stats": stage_stats,
-            "completions": completions[:20],
-            "days": days,
-        },
-    )
-
-
 @router.get("/partials/board", response_class=HTMLResponse)
 async def partial_board(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
@@ -114,25 +93,4 @@ async def partial_queue(request: Request) -> HTMLResponse:
     sections, org = await _build_sections(request)
     return templates.TemplateResponse(
         request, "partials/_queue.html", {"sections": sections, "org": org}
-    )
-
-
-@router.get("/partials/stats", response_class=HTMLResponse)
-async def partial_stats(request: Request, days: int | None = None) -> HTMLResponse:
-    templates = request.app.state.templates
-    store = request.app.state.metrics
-
-    throughput = await store.get_throughput_stats(days)
-    stage_stats = await store.get_stage_stats(days)
-    completions = await store.get_recent_completions(days)
-
-    return templates.TemplateResponse(
-        request,
-        "partials/_stats.html",
-        {
-            "throughput": throughput,
-            "stage_stats": stage_stats,
-            "completions": completions[:20],
-            "days": days,
-        },
     )

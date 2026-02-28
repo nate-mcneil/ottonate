@@ -13,11 +13,10 @@ from ottonate.dashboard.app import create_app
 
 
 @pytest.fixture
-def config(tmp_path):
+def config():
     return OttonateConfig(
         github_org="testorg",
         github_agent_label="otto",
-        db_path=tmp_path / "test.db",
     )
 
 
@@ -175,20 +174,6 @@ class TestApiAttention:
         assert data[2]["stage"] == "agentReview"
 
 
-class TestApiMetrics:
-    def test_returns_metrics(self, client):
-        resp = client.get("/api/metrics")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "throughput" in data
-        assert "stage_stats" in data
-        assert "recent_completions" in data
-
-    def test_days_filter(self, client):
-        resp = client.get("/api/metrics?days=7")
-        assert resp.status_code == 200
-
-
 class TestApiUnstick:
     def test_swaps_label(self, client, mock_github):
         resp = client.post(
@@ -244,12 +229,6 @@ class TestHtmlViews:
         assert resp.status_code == 200
         assert "Attention" in resp.text
 
-    def test_metrics_page_renders(self, client):
-        resp = client.get("/metrics")
-        assert resp.status_code == 200
-        assert "Metrics" in resp.text
-        assert "Throughput" in resp.text
-
     def test_pipeline_empty_state(self, client, mock_github):
         mock_github.search_issues.return_value = []
         resp = client.get("/")
@@ -275,10 +254,4 @@ class TestHtmlPartials:
         mock_github.search_issues.return_value = SAMPLE_ISSUES
         resp = client.get("/partials/queue")
         assert resp.status_code == 200
-        assert "<!DOCTYPE" not in resp.text
-
-    def test_stats_partial(self, client):
-        resp = client.get("/partials/stats")
-        assert resp.status_code == 200
-        assert "Throughput" in resp.text
         assert "<!DOCTYPE" not in resp.text

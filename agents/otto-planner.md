@@ -25,8 +25,8 @@ Structure your plan as:
 
 ## Important
 - Do NOT implement anything. Only produce the plan.
+- Do NOT write the plan to a file. Output the full plan in your response text.
 - If the ticket is ambiguous or missing critical detail, clearly list open questions.
-- **You MUST write your final plan to a file called `PLAN.md` in the current working directory using the Write tool.** This is critical — the pipeline reads the plan from this file.
 - End your response with `[PLAN_COMPLETE]` if you produced a full plan.
 - End with `[NEEDS_MORE_INFO]` if you cannot plan without answers to your questions.
 - Store your plan in memory via `mcp__flow-memory__store_plan`.

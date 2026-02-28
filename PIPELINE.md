@@ -169,7 +169,7 @@ CI-green pull request.
 |---|---|
 | **Label** | `agentMergeReady` |
 | **Agent** | None (human action) |
-| **What happens** | The pipeline checks if the PR has been merged. If not, an @mention notification is posted (once). Once the PR is merged, the pipeline queries issue metrics. If the issue had retries or stuck episodes, it transitions to the retro stage. If clean, labels are removed and the issue is complete. |
+| **What happens** | The pipeline checks if the PR has been merged. If not, an @mention notification is posted (once). Once the PR is merged, the pipeline derives issue metrics from the GitHub issue timeline (label events) and structured HTML comments embedded during each stage. If the issue had retries or stuck episodes, it transitions to the retro stage. If clean, labels are removed and the issue is complete. |
 | **Next** | `agentRetro` if issues were detected; issue complete otherwise |
 
 ### 12. Retrospective
