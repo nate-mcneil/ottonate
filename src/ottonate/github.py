@@ -571,6 +571,36 @@ class GitHubClient:
             assignee,
         )
 
+    # -- Label management --
+
+    async def ensure_labels(
+        self, owner: str, repo: str, labels: dict[str, str]
+    ) -> list[str]:
+        """Create any missing labels in a repo. Returns list of labels created.
+
+        ``labels`` maps label name to hex color (without #).
+        """
+        stdout = await self._gh(
+            "label", "list", "--repo", f"{owner}/{repo}", "--json", "name", "--limit", "200"
+        )
+        existing = set()
+        if stdout:
+            existing = {item.get("name", "") for item in json.loads(stdout)}
+
+        created: list[str] = []
+        for name, color in labels.items():
+            if name not in existing:
+                result = await self._gh(
+                    "label", "create", name,
+                    "--repo", f"{owner}/{repo}",
+                    "--color", color,
+                    "--force",
+                )
+                if result or result == "":
+                    created.append(name)
+                    log.info("label_created", repo=f"{owner}/{repo}", label=name)
+        return created
+
     # -- Internal --
 
     async def _gh(self, *args: str) -> str:
