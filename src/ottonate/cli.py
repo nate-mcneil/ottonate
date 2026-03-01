@@ -108,7 +108,7 @@ def process_idea(pr_ref: str) -> None:
         for f in pr_files:
             filename = f.get("filename", "")
             if filename.startswith(prefix):
-                rest = filename[len(prefix):]
+                rest = filename[len(prefix) :]
                 parts = rest.split("/")
                 if parts and parts[0]:
                     project_name = parts[0]
@@ -216,14 +216,20 @@ def setup() -> None:
                 result.add(".env file", "kept")
             else:
                 write_env_file(
-                    env_path, org=org, repo=eng_repo,
-                    username=username, entry_label=entry_label,
+                    env_path,
+                    org=org,
+                    repo=eng_repo,
+                    username=username,
+                    entry_label=entry_label,
                 )
                 result.add(".env file", "written")
         else:
             write_env_file(
-                env_path, org=org, repo=eng_repo,
-                username=username, entry_label=entry_label,
+                env_path,
+                org=org,
+                repo=eng_repo,
+                username=username,
+                entry_label=entry_label,
             )
             result.add(".env file", "written")
 
@@ -243,7 +249,7 @@ def setup() -> None:
         click.echo("\nNext steps:")
         click.echo("  ottonate run            # Start the scheduler daemon")
         click.echo("  ottonate init-engineering  # Auto-populate architecture docs")
-        click.echo("  ottonate dashboard      # Open the web dashboard")
+        click.echo("  ottonate rules-check    # Debug merged rules for a repo")
         click.echo()
 
     asyncio.run(_setup())
@@ -273,20 +279,6 @@ def init_engineering_cmd() -> None:
     github = GitHubClient()
     pr_url = asyncio.run(init_engineering(config, github))
     click.echo(f"PR created: {pr_url}")
-
-
-@main.command()
-@click.option("--port", default=8080, help="Port to bind the dashboard server to.")
-def dashboard(port: int) -> None:
-    """Start the ottonate dashboard web UI."""
-    import uvicorn
-
-    from ottonate.dashboard.app import create_app
-
-    config = _get_config()
-    app = create_app(config)
-    click.echo(f"Starting dashboard at http://127.0.0.1:{port}")
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
 
 
 @main.command("rules-check")

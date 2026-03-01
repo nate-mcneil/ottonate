@@ -103,17 +103,6 @@ Five points where the pipeline pauses for human judgment:
 
 The quality gate runs on Haiku for speed and cost. Everything else runs on Sonnet.
 
-## Dashboard
-
-```bash
-ottonate dashboard
-```
-
-Opens a web UI at `http://127.0.0.1:8080` with two views:
-
-- **Pipeline Board**: Kanban view grouping issues into Ideation, Planning, Implementing, Awaiting Human, and Stuck. Each card links to GitHub. Auto-refreshes every 10 seconds.
-- **Attention Queue**: Prioritized list of items needing human action. Stuck items surface first, then merge-ready, then reviews. Inline buttons to unstick, approve, or merge.
-
 ## Quick Start
 
 ### Prerequisites
@@ -185,7 +174,6 @@ ottonate process owner/repo#42       # Push a single issue through one pipeline 
 ottonate process-idea owner/repo#42  # Triage and refine a single idea issue
 ottonate sync-agents                 # Sync agent definitions to ~/.claude/agents/
 ottonate init-engineering            # Bootstrap engineering repo with scaffolding
-ottonate dashboard [--port 8080]     # Start the web dashboard UI
 ottonate rules-check owner/repo      # Display merged rules for a repo
 ```
 
@@ -283,11 +271,6 @@ If you are an AI agent (Claude Code, Cursor, Copilot, etc.) tasked with setting 
 6. **Start the pipeline**
    ```bash
    ottonate run
-   ```
-
-7. **Verify** by opening the dashboard:
-   ```bash
-   ottonate dashboard
    ```
 
 After setup, the user can label any issue with `otto` (or their chosen entry label) to feed it into the pipeline.

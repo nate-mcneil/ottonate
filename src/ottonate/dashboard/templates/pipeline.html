@@ -1,9 +1,0 @@
-{% extends "base.html" %}
-{% set active_tab = "pipeline" %}
-{% block title %}Pipeline - Ottonate{% endblock %}
-
-{% block content %}
-<div id="board" hx-get="/partials/board" hx-trigger="every 10s" hx-swap="innerHTML">
-  {% include "partials/_board.html" %}
-</div>
-{% endblock %}
